@@ -21,6 +21,7 @@ import {
   ExportOutlined,
   MenuOutlined,
   PieChartOutlined,
+  CloudSyncOutlined,
 } from '@ant-design/icons';
 import KanbanBoard from '@/app/components/Kanban/KanbanBoard';
 import SearchResults from '@/app/components/SearchResults';
@@ -74,6 +75,7 @@ export default function InboxPage() {
   const [totalEstimate, setTotalEstimate] = useState<number>(0);
   const [searchScores, setSearchScores] = useState<Record<string, number>>({});
   const [searchMode, setSearchMode] = useState<'semantic' | 'text'>('semantic');
+  const [syncLoading, setSyncLoading] = useState(false);
 
   useEffect(() => {
     const savedView = localStorage.getItem('viewMode');
@@ -223,6 +225,20 @@ export default function InboxPage() {
   const handleRefresh = () => {
     loadEmails(selectedMailbox);
     message.success('Refreshed');
+  };
+
+  const handleSync = async () => {
+    setSyncLoading(true);
+    try {
+      await emailService.syncEmails();
+      message.success('Sync completed. Refreshing emails...');
+      await loadEmails(selectedMailbox);
+    } catch (error) {
+      console.error('Sync failed:', error);
+      message.error('Failed to sync emails from Gmail');
+    } finally {
+      setSyncLoading(false);
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -508,6 +524,17 @@ export default function InboxPage() {
                   <span className="view-mode-text">Kanban</span>
                 </button>
               </div>
+
+              <Button
+                icon={<CloudSyncOutlined spin={syncLoading} />}
+                onClick={handleSync}
+                loading={syncLoading}
+                type="text"
+                className="flex items-center text-gray-400 hover:text-blue-600 transition-colors"
+                title="Sync with Gmail"
+              >
+                <span className="sync-btn-text">Sync</span>
+              </Button>
 
               <Dropdown
                 menu={{

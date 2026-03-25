@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { message } from 'antd';
 import {
   DndContext,
   closestCenter,
@@ -15,9 +16,11 @@ import {
 } from '@dnd-kit/sortable';
 import {
   ReloadOutlined,
-  SettingOutlined
+  SettingOutlined,
+  CloudSyncOutlined
 } from '@ant-design/icons';
 import { KanbanCardType, ColMeta, kanbanService } from '@/services/kanbanService';
+import { emailService } from '@/services/email';
 import KanbanColumn from './KanbanColumn';
 import KanbanCard from './KanbanCard';
 import KanbanSettingsModal from './KanbanSettingsModal';
@@ -29,6 +32,7 @@ export default function KanbanBoard({ onCardClick }: { onCardClick: (card: Kanba
   const [error, setError] = useState('');
   const [activeId, setActiveId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [syncLoading, setSyncLoading] = useState(false);
 
   // Fetch only column metadata (lighter than full board)
   const fetchColumnsMeta = useCallback(async () => {
@@ -118,6 +122,20 @@ export default function KanbanBoard({ onCardClick }: { onCardClick: (card: Kanba
   useEffect(() => {
     fetchBoard();
   }, [fetchBoard]);
+
+  const handleSync = async () => {
+    setSyncLoading(true);
+    try {
+      await emailService.syncEmails();
+      message.success('Sync completed. Refreshing board...');
+      await fetchBoard();
+    } catch (err) {
+      console.error('Sync failed:', err);
+      message.error('Failed to sync emails from Gmail');
+    } finally {
+      setSyncLoading(false);
+    }
+  };
 
   const findContainer = (id: string, cols: Record<string, KanbanCardType[]>) => {
     if (id in cols) {
@@ -294,6 +312,14 @@ export default function KanbanBoard({ onCardClick }: { onCardClick: (card: Kanba
         <div className="ml-auto pl-2 flex items-center gap-2">
           <button title="Board Settings" onClick={() => setSettingsOpen(true)} className="p-2 text-gray-400 hover:text-blue-600 transition-colors">
             <SettingOutlined />
+          </button>
+          <button 
+            title="Sync with Gmail" 
+            onClick={handleSync} 
+            disabled={syncLoading}
+            className={`p-2 transition-colors ${syncLoading ? 'text-gray-300' : 'text-gray-400 hover:text-blue-600'}`}
+          >
+            <CloudSyncOutlined spin={syncLoading} />
           </button>
           <button title="Refresh Board" onClick={fetchBoard} className="p-2 text-gray-400 hover:text-blue-600 transition-colors">
             <ReloadOutlined spin={loading} />

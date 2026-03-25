@@ -160,4 +160,14 @@ export const emailService = {
     // Gmail API: Add TRASH label
     await emailService.modifyEmail(emailId, ['TRASH'], []);
   },
+
+  // Sync emails from Gmail
+  syncEmails: async (accountId?: number, folderName: string = 'INBOX', limit: number = 10, page: number = 0): Promise<void> => {
+    if (USE_MOCK_API) {
+      return;
+    }
+    await apiClient.post('/emails/sync', null, {
+      params: { accountId, folderName, limit, page }
+    });
+  },
 };
