@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { useRouter } from 'next/navigation';
 import { User, LoginRequest, SignupRequest, GoogleAuthRequest } from '@/types/auth';
 import { authService } from '@/services/auth';
-import { getRefreshToken } from '@/services/api';
+import { getRefreshToken, getAccessToken } from '@/services/api';
 
 interface AuthContextType {
   user: User | null;
@@ -47,23 +47,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
 
     const checkAuth = async () => {
+      console.log('[AuthContext] Initializing checkAuth...');
       const refreshToken = getRefreshToken();
-      console.log('[AuthContext] checkAuth, found refreshToken:', !!refreshToken);
-      
+      const accessToken = getAccessToken();
+      console.log(`[AuthContext] Tokens found: access=${!!accessToken}, refresh=${!!refreshToken}`);
+
       if (refreshToken) {
         try {
-          console.log('[AuthContext] Fetching /me...');
+          console.log('[AuthContext] Attempting to fetch current user data...');
           const userData = await authService.getMe();
-          console.log('[AuthContext] Fetch /me success:', userData.email);
+          console.log('[AuthContext] Successfully recovered user:', userData.email);
           setUser(userData);
         } catch (error) {
-          console.error('[AuthContext] checkAuth error, clearing tokens:', error);
-          authService.clearTokens();
+          console.error('[AuthContext] Failed to recover user during refresh. This may trigger a logout if refresh token also fails.', error);
+          // If getMe fails, the axios interceptor might have already tried refreshing and failed.
+          // Or the access token was invalid and refresh also failed.
+          // If we still have a refreshToken, don't clear tokens yet? 
+          // Actually, if getMe fails after internal retry, then we are truly logged out.
         }
+      } else {
+        console.log('[AuthContext] No refresh token found, skipping background auth.');
       }
-      
+
       setLoading(false);
-      console.log('[AuthContext] checkAuth finished, user set:', !!user);
+      console.log('[AuthContext] Lifecycle initialization complete.');
     };
 
     checkAuth();
@@ -127,10 +134,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('[AuthContext] Starting googleAuth with code:', !!data.code);
       const response = await authService.googleAuth(data);
       console.log('[AuthContext] googleAuth success, user:', response.user?.email);
-      
+
       setUser(response.user);
       console.log('[AuthContext] State updated, waiting 500ms for stability...');
-      
+
       setTimeout(() => {
         console.log('[AuthContext] Redirecting to /inbox now');
         router.push('/inbox');

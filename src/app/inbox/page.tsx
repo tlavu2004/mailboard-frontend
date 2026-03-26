@@ -823,7 +823,7 @@ export default function InboxPage() {
                                 <div className="w-2 h-2 rounded-full bg-blue-600" style={{ marginRight: -4 }} />
                               )}
                               <Text strong={!email.isRead} style={{ fontSize: '14px', color: !email.isRead ? '#262626' : '#595959' }}>
-                                {email.from.name || email.from.email}
+                                {email?.from?.name || email?.from?.email || 'Unknown Sender'}
                               </Text>
                               <div onClick={(e) => handleStar(e, email)}>
                                 {email.isStarred ? <StarOutlined style={{ color: '#faad14' }} /> : <StarOutlined style={{ color: '#d9d9d9' }} />}
@@ -902,19 +902,19 @@ export default function InboxPage() {
                       <Space direction="vertical" size="small" style={{ width: '100%' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <Avatar style={{ backgroundColor: '#667eea' }}>
-                            {selectedEmail.from.name?.charAt(0) || selectedEmail.from.email.charAt(0).toUpperCase()}
+                              {selectedEmail?.from?.name?.charAt(0) || selectedEmail?.from?.email?.charAt(0)?.toUpperCase() || 'U'}
                           </Avatar>
                           <div>
-                            <Text strong>{selectedEmail.from.name || selectedEmail.from.email}</Text>
+                            <Text strong>{selectedEmail?.from?.name || selectedEmail?.from?.email || 'Unknown'}</Text>
                             <br />
                             <Text type="secondary" style={{ fontSize: '12px' }}>
-                              {selectedEmail.from.email}
+                              {selectedEmail?.from?.email}
                             </Text>
                           </div>
                         </div>
                         <div>
                           <Text type="secondary">To: </Text>
-                          <Text>{selectedEmail.to.map(t => t.email).join(', ')}</Text>
+                          <Text>{selectedEmail?.to?.map(t => t.email).join(', ') || ''}</Text>
                         </div>
                         {selectedEmail.cc && selectedEmail.cc.length > 0 && (
                           <div>

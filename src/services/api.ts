@@ -158,9 +158,13 @@ export const setAccessToken = (token: string) => {
 
 export const getAccessToken = () => {
   if (!accessToken && typeof window !== 'undefined') {
-    accessToken = localStorage.getItem('accessToken') || getCookie('accessToken');
+    const local = localStorage.getItem('accessToken');
+    const cookie = getCookie('accessToken');
+    accessToken = local || cookie;
     if (accessToken) {
-      console.log('[API] Recovered access token from storage');
+      console.log(`[API] Recovered access token from ${local ? 'localStorage' : 'cookie'}. Length: ${accessToken.length}`);
+    } else {
+      console.warn('[API] getAccessToken: No access token found in storage.');
     }
   }
   return accessToken;
@@ -176,7 +180,13 @@ export const setRefreshToken = (token: string) => {
 
 export const getRefreshToken = () => {
   if (typeof window !== 'undefined') {
-    return localStorage.getItem('refreshToken') || getCookie('refreshToken');
+    const local = localStorage.getItem('refreshToken');
+    const cookie = getCookie('refreshToken');
+    const token = local || cookie;
+    if (token) {
+      console.log(`[API] getRefreshToken: Found token in ${local ? 'localStorage' : 'cookie'}`);
+    }
+    return token;
   }
   return null;
 };
