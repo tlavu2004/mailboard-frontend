@@ -1,6 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost/api/v1').replace(/\/?$/, '/');
 
 // Create axios instance
 const apiClient = axios.create({
@@ -45,9 +45,18 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Response interceptor to handle token refresh
+// Response interceptor to handle data unwrapping and token refresh
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // If the response is wrapped in our ApiResponse structure, unwrap it
+    if (response.data && response.data.hasOwnProperty('success') && response.data.hasOwnProperty('data')) {
+      return {
+        ...response,
+        data: response.data.data
+      };
+    }
+    return response;
+  },
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
@@ -80,12 +89,19 @@ apiClient.interceptors.response.use(
       }
 
       try {
-        const response = await axios.post(`${API_URL}/auth/refresh`, {
+        console.log('[API] Attempting token refresh with:', refreshToken.substring(0, 10) + '...');
+        const response = await axios.post(`${API_URL}auth/refresh`, {
           refreshToken,
         });
 
-        const { accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data;
+        const apiResponse = response.data;
+        const { accessToken: newAccessToken, refreshToken: newRefreshToken } = apiResponse.data;
 
+        if (!newAccessToken) {
+          throw new Error('No access token in refresh response');
+        }
+
+        console.log('[API] Token refresh successful, new access token length:', newAccessToken.length);
         setAccessToken(newAccessToken);
         setRefreshToken(newRefreshToken);
 
@@ -107,32 +123,71 @@ apiClient.interceptors.response.use(
   }
 );
 
+// Helper for cookies
+const setCookie = (name: string, value: string, days: number) => {
+  const date = new Date();
+  date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+  const expires = "; expires=" + date.toUTCString();
+  if (typeof document !== 'undefined') {
+    document.cookie = name + "=" + (value || "") + expires + "; path=/; SameSite=Lax";
+  }
+};
+
+const getCookie = (name: string) => {
+  if (typeof document === 'undefined') return null;
+  const nameEQ = name + "=";
+  const ca = document.cookie.split(';');
+  for (let i = 0; i < ca.length; i++) {
+    let c = ca[i];
+    while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+    if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+  }
+  return null;
+};
+
 // Token management functions
 export const setAccessToken = (token: string) => {
+  console.log('[API] Setting access token (length):', token?.length || 0);
   accessToken = token;
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('accessToken', token);
+    setCookie('accessToken', token, 1);
+  }
 };
 
 export const getAccessToken = () => {
+  if (!accessToken && typeof window !== 'undefined') {
+    accessToken = localStorage.getItem('accessToken') || getCookie('accessToken');
+    if (accessToken) {
+      console.log('[API] Recovered access token from storage');
+    }
+  }
   return accessToken;
 };
 
 export const setRefreshToken = (token: string) => {
   if (typeof window !== 'undefined') {
+    console.log('[API] Saving refresh token');
     localStorage.setItem('refreshToken', token);
+    setCookie('refreshToken', token, 7);
   }
 };
 
 export const getRefreshToken = () => {
   if (typeof window !== 'undefined') {
-    return localStorage.getItem('refreshToken');
+    return localStorage.getItem('refreshToken') || getCookie('refreshToken');
   }
   return null;
 };
 
 export const clearTokens = () => {
+  console.log('[API] Clearing all tokens');
   accessToken = null;
   if (typeof window !== 'undefined') {
+    localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
+    document.cookie = 'accessToken=; Max-Age=-99999999; path=/;';
+    document.cookie = 'refreshToken=; Max-Age=-99999999; path=/;';
     // Dispatch custom logout event for multi-tab sync
     window.dispatchEvent(new Event('logout'));
   }

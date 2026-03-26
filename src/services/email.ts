@@ -10,7 +10,7 @@ export const emailService = {
       return mockData.mailboxes;
     }
     
-    const response = await apiClient.get<{ mailboxes: Mailbox[] }>('/mailboxes');
+    const response = await apiClient.get<{ mailboxes: Mailbox[] }>('mailboxes');
     return response.data.mailboxes;
   },
 
@@ -20,7 +20,7 @@ export const emailService = {
       return await mockEmailApi.getEmails(mailboxId, page, perPage) as unknown as EmailListResponse;
     }
     
-    const response = await apiClient.get<EmailListResponse>(`/mailboxes/${mailboxId}/emails`, {
+    const response = await apiClient.get<EmailListResponse>(`mailboxes/${mailboxId}/emails`, {
       params: { page, perPage },
     });
     return response.data;
@@ -32,7 +32,7 @@ export const emailService = {
       return await mockEmailApi.getEmailById(emailId) as unknown as Email;
     }
     
-    const response = await apiClient.get<Email>(`/emails/${emailId}`);
+    const response = await apiClient.get<Email>(`emails/${emailId}`);
     return response.data;
   },
 
@@ -44,7 +44,7 @@ export const emailService = {
       const filtered = all.emails.filter(e => e.subject.toLowerCase().includes(query.toLowerCase()));
       return { emails: filtered as unknown as Email[], nextPageToken: '', totalEstimate: filtered.length };
     }
-    const response = await apiClient.get<{ emails: Email[], nextPageToken: string, totalEstimate: number }>('/emails/search', { 
+    const response = await apiClient.get<{ emails: Email[], nextPageToken: string, totalEstimate: number }>('emails/search', { 
       params: { q: query, pageToken } 
     });
     return response.data;
@@ -82,14 +82,14 @@ export const emailService = {
         formData.append('attachments', file);
       });
       
-      await apiClient.post('/emails/send', formData, {
+      await apiClient.post('emails/send', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
     } else {
       // No attachments, use JSON
-      await apiClient.post('/emails/send', { 
+      await apiClient.post('emails/send', { 
         to, 
         cc, 
         bcc, 
@@ -106,7 +106,7 @@ export const emailService = {
       // Mock implementation
       return;
     }
-    await apiClient.post(`/emails/${originalEmailId}/reply`, { to, subject, body });
+    await apiClient.post(`emails/${originalEmailId}/reply`, { to, subject, body });
   },
 
   // Modify email labels (mark read/unread, star, delete)
@@ -115,7 +115,7 @@ export const emailService = {
       // Mock implementation
       return;
     }
-    await apiClient.post(`/emails/${emailId}/modify`, { addLabels, removeLabels });
+    await apiClient.post(`emails/${emailId}/modify`, { addLabels, removeLabels });
   },
 
   // Get attachment URL
@@ -166,7 +166,7 @@ export const emailService = {
     if (USE_MOCK_API) {
       return;
     }
-    await apiClient.post('/emails/sync', null, {
+    await apiClient.post('emails/sync', null, {
       params: { accountId, folderName, limit, page }
     });
   },

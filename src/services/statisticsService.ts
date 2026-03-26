@@ -8,7 +8,7 @@ export const statisticsService = {
    * @returns Statistics data including status distribution, trends, top senders, and activity
    */
   getStatistics: async (period: '7d' | '30d' | '90d' = '30d'): Promise<StatisticsResponse> => {
-    const response = await api.get(`/statistics?period=${period}`);
+    const response = await api.get(`statistics?period=${period}`);
     return response.data;
   },
 };

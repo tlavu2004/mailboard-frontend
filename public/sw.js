@@ -62,6 +62,9 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // Only handle GET requests - POST/PUT/DELETE cannot be cached
+  if (request.method !== 'GET') return;
+
   // Check if request is for API
   const isApiRequest = API_CACHE_PATTERNS.some(pattern => pattern.test(url.pathname));
 

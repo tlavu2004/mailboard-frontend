@@ -36,20 +36,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Check if user is authenticated on mount
   useEffect(() => {
+    // Aggressively kill any Service Workers to prevent caching issues
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (const registration of registrations) {
+          console.log('[Auth] Unregistering stale Service Worker');
+          registration.unregister();
+        }
+      });
+    }
+
     const checkAuth = async () => {
       const refreshToken = getRefreshToken();
+      console.log('[AuthContext] checkAuth, found refreshToken:', !!refreshToken);
       
       if (refreshToken) {
         try {
+          console.log('[AuthContext] Fetching /me...');
           const userData = await authService.getMe();
+          console.log('[AuthContext] Fetch /me success:', userData.email);
           setUser(userData);
         } catch (error) {
-          console.error('Failed to get user:', error);
+          console.error('[AuthContext] checkAuth error, clearing tokens:', error);
           authService.clearTokens();
         }
       }
       
       setLoading(false);
+      console.log('[AuthContext] checkAuth finished, user set:', !!user);
     };
 
     checkAuth();
@@ -109,10 +123,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const googleAuth = async (data: GoogleAuthRequest) => {
     try {
+      setLoading(true);
+      console.log('[AuthContext] Starting googleAuth with code:', !!data.code);
       const response = await authService.googleAuth(data);
+      console.log('[AuthContext] googleAuth success, user:', response.user?.email);
+      
       setUser(response.user);
-      router.push('/inbox');
+      console.log('[AuthContext] State updated, waiting 500ms for stability...');
+      
+      setTimeout(() => {
+        console.log('[AuthContext] Redirecting to /inbox now');
+        router.push('/inbox');
+        setLoading(false);
+      }, 500);
     } catch (error) {
+      console.error('[AuthContext] googleAuth error:', error);
       throw error;
     }
   };

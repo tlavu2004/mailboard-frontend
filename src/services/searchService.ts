@@ -51,7 +51,7 @@ export const searchService = {
    * Perform semantic/vector-based search
    */
   semanticSearch: async (query: string, limit: number = 10): Promise<SemanticSearchResponse> => {
-    const response = await apiClient.post<any>('/search/semantic', { query, limit });
+    const response = await apiClient.post<any>('search/semantic', { query, limit });
     
     const results = (response.data.results || []).map((r: any) => ({
       email: transformEmail(r.email),
@@ -73,7 +73,7 @@ export const searchService = {
       return [];
     }
     
-    const response = await apiClient.get<SuggestionsResponse>('/search/suggestions', {
+    const response = await apiClient.get<SuggestionsResponse>('search/suggestions', {
       params: { q: query },
     });
     
@@ -84,7 +84,7 @@ export const searchService = {
    * Trigger embedding generation for user's emails (admin/utility)
    */
   generateEmbeddings: async (limit: number = 50): Promise<{ processed: number; failed: number }> => {
-    const response = await apiClient.post<{ processed: number; failed: number }>('/search/generate-embeddings', { limit });
+    const response = await apiClient.post<{ processed: number; failed: number }>('search/generate-embeddings', { limit });
     return response.data;
   },
 };

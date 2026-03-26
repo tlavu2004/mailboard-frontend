@@ -51,7 +51,7 @@ function LoginContent() {
     onSuccess: async (codeResponse) => {
       setLoading(true);
       try {
-        await googleAuth({ token: codeResponse.code });
+        await googleAuth({ code: codeResponse.code });
         message.success('Google authentication successful!');
       } catch (error: unknown) {
         let errorMessage = 'Google authentication failed';
@@ -70,6 +70,8 @@ function LoginContent() {
       message.error('Google authentication failed');
     },
     flow: 'auth-code',
+    ux_mode: 'redirect',
+    redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost'}/auth/callback`,
     scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send email profile openid',
   });
 

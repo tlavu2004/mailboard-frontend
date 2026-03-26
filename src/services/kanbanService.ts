@@ -46,7 +46,7 @@ export const kanbanService = {
       if (opts.sortOrder) params.sortOrder = opts.sortOrder;
     }
 
-    const response = await apiClient.get<{ columns: Record<string, any[]> }>('/kanban', { params });
+    const response = await apiClient.get<{ columns: Record<string, any[]> }>('kanban', { params });
     const columns: Record<string, KanbanCardType[]> = {};
 
     Object.entries(response.data.columns || {}).forEach(([key, cards]) => {
@@ -57,57 +57,57 @@ export const kanbanService = {
   },
 
   getMeta: async () => {
-    const response = await apiClient.get<{ columns: ColMeta[] }>('/kanban/meta');
+    const response = await apiClient.get<{ columns: ColMeta[] }>('kanban/meta');
     return response.data;
   },
 
   moveCard: async (emailId: string, toStatus: string) => {
-    const response = await apiClient.post('/kanban/move', { email_id: emailId, to_status: toStatus });
+    const response = await apiClient.post('kanban/move', { email_id: emailId, to_status: toStatus });
     return response.data;
   },
 
   snoozeCard: async (emailId: string, until: string) => {
     // until should be RFC3339 string
-    const response = await apiClient.post('/kanban/snooze', { email_id: emailId, until });
+    const response = await apiClient.post('kanban/snooze', { email_id: emailId, until });
     return response.data;
   },
 
   summarizeEmail: async (emailId: string) => {
-    const response = await apiClient.post<{ ok: boolean; summary: string }>('/kanban/summarize', { email_id: emailId });
+    const response = await apiClient.post<{ ok: boolean; summary: string }>('kanban/summarize', { email_id: emailId });
     return response.data;
   },
 
   // ========== Column Configuration ==========
 
   getColumns: async (): Promise<KanbanColumn[]> => {
-    const response = await apiClient.get<{ columns: KanbanColumn[] }>('/kanban/columns');
+    const response = await apiClient.get<{ columns: KanbanColumn[] }>('kanban/columns');
     return response.data.columns || [];
   },
 
   createColumn: async (data: CreateColumnRequest): Promise<KanbanColumn> => {
-    const response = await apiClient.post<KanbanColumn>('/kanban/columns', data);
+    const response = await apiClient.post<KanbanColumn>('kanban/columns', data);
     return response.data;
   },
 
   updateColumn: async (id: string, data: UpdateColumnRequest): Promise<KanbanColumn> => {
-    const response = await apiClient.put<KanbanColumn>(`/kanban/columns/${id}`, data);
+    const response = await apiClient.put<KanbanColumn>(`kanban/columns/${id}`, data);
     return response.data;
   },
 
   deleteColumn: async (id: string): Promise<KanbanColumn[]> => {
-    const response = await apiClient.delete<{ columns: KanbanColumn[] }>(`/kanban/columns/${id}`);
+    const response = await apiClient.delete<{ columns: KanbanColumn[] }>(`kanban/columns/${id}`);
     return response.data.columns || [];
   },
 
   reorderColumns: async (columnIds: string[]): Promise<KanbanColumn[]> => {
-    const response = await apiClient.post<{ columns: KanbanColumn[] }>('/kanban/columns/reorder', { columnIds });
+    const response = await apiClient.post<{ columns: KanbanColumn[] }>('kanban/columns/reorder', { columnIds });
     return response.data.columns || [];
   },
 
   // ========== Gmail Labels ==========
 
   getGmailLabels: async (): Promise<GmailLabel[]> => {
-    const response = await apiClient.get<{ labels: GmailLabel[] }>('/gmail/labels');
+    const response = await apiClient.get<{ labels: GmailLabel[] }>('gmail/labels');
     return response.data.labels || [];
   },
 };
