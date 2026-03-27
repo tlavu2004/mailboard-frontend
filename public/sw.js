@@ -15,10 +15,12 @@ const STATIC_CACHE_URLS = [
 
 // API endpoints to cache with NetworkFirst strategy
 const API_CACHE_PATTERNS = [
-  /\/api\/emails/,
-  /\/api\/kanban/,
-  /\/api\/search/,
-  /\/api\/auth\/me/,
+  /\/api\/v1\/emails/,
+  /\/api\/v1\/kanban/,
+  /\/api\/v1\/statistics/,
+  /\/api\/v1\/search/,
+  /\/api\/v1\/auth/,
+  /\/api\/v1\/gmail/,
 ];
 
 // Install event - cache static assets

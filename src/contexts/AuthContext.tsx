@@ -33,6 +33,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  
+  // Helper to clear PWA cache
+  const clearPWACache = () => {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      console.log('[AuthContext] Requesting Service Worker to clear cache...');
+      navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
+    }
+  };
 
   // Check if user is authenticated on mount
   useEffect(() => {
@@ -111,6 +119,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = async (data: LoginRequest) => {
     try {
       const response = await authService.login(data);
+      clearPWACache();
       setUser(response.user);
       router.push('/inbox');
     } catch (error) {
@@ -121,6 +130,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signup = async (data: SignupRequest) => {
     try {
       const response = await authService.signup(data);
+      clearPWACache();
       setUser(response.user);
       router.push('/inbox');
     } catch (error) {
@@ -140,6 +150,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       setTimeout(() => {
         console.log('[AuthContext] Redirecting to /inbox now');
+        clearPWACache();
         router.push('/inbox');
         setLoading(false);
       }, 500);
@@ -155,6 +166,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
+      clearPWACache();
       setUser(null);
       router.push('/login');
     }
