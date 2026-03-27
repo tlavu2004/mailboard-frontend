@@ -111,6 +111,7 @@ apiClient.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
         return apiClient(originalRequest);
       } catch (refreshError) {
+        console.error('[API] Token refresh failed permanently. Clearing session.', refreshError);
         processQueue(refreshError, null);
         clearTokens();
         window.location.href = '/login';
