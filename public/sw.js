@@ -69,12 +69,18 @@ self.addEventListener('fetch', (event) => {
 
   // Check if request is for API
   const isApiRequest = API_CACHE_PATTERNS.some(pattern => pattern.test(url.pathname));
+  
+  // Check if request is for a navigation page (HTML)
+  const isNavigationRequest = request.mode === 'navigate' || 
+                              request.headers.get('accept').includes('text/html') ||
+                              STATIC_CACHE_URLS.includes(url.pathname);
 
-  if (isApiRequest) {
-    // NetworkFirst strategy for API requests
+  if (isApiRequest || isNavigationRequest) {
+    // NetworkFirst strategy for API and HTML pages
+    // This prevents ChunkLoadError by ensuring the latest index.html is loaded
     event.respondWith(networkFirstStrategy(request));
   } else {
-    // CacheFirst strategy for static assets
+    // CacheFirst strategy for other static assets (JS chunks, CSS, images)
     event.respondWith(cacheFirstStrategy(request));
   }
 });

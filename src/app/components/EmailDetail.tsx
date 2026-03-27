@@ -6,6 +6,7 @@ import {
   DeleteOutlined,
   PaperClipOutlined,
   ExportOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 import { Email } from '@/types/email';
 
@@ -18,6 +19,7 @@ interface EmailDetailProps {
   onDelete: (e: React.MouseEvent, email: Email) => void;
   onReply?: (email: Email) => void;
   onForward?: (email: Email) => void;
+  onRefresh?: (email: Email) => void;
   onDownloadAttachment: (emailId: string, attachmentId: string, filename: string) => void;
   showMobileDetail: boolean;
   className?: string;
@@ -31,6 +33,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
   onDelete,
   onReply,
   onForward,
+  onRefresh,
   onDownloadAttachment,
   showMobileDetail,
   className,
@@ -124,6 +127,9 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             <Button icon={<StarOutlined />} onClick={(e) => onStar(e, email)}>
               {email.isStarred ? 'Unstar' : 'Star'}
             </Button>
+            <Button icon={<ReloadOutlined />} onClick={() => onRefresh && onRefresh(email)} title="Force re-fetch from Gmail">
+              Refresh Content
+            </Button>
             <Button icon={<DeleteOutlined />} danger onClick={(e) => onDelete(e, email)}>
               Delete
             </Button>
@@ -190,7 +196,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                     border: 'none',
                     overflow: 'hidden',
                   }}
-                  sandbox="allow-same-origin"
+                  sandbox="allow-same-origin allow-scripts"
                   onLoad={(e) => {
                     // Auto-resize iframe to content height
                     const iframe = e.target as HTMLIFrameElement;

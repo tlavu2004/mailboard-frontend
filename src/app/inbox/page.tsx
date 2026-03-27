@@ -241,6 +241,18 @@ export default function InboxPage() {
     }
   };
 
+  const handleRepair = async () => {
+    try {
+      message.loading({ content: 'Repairing email bodies...', key: 'repairing' });
+      await emailService.repairEmails();
+      message.success({ content: 'Repair completed. Refreshing...', key: 'repairing' });
+      loadEmails(selectedMailbox);
+    } catch (error) {
+      console.error('Repair failed:', error);
+      message.error({ content: 'Repair failed', key: 'repairing' });
+    }
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -534,6 +546,16 @@ export default function InboxPage() {
                 title="Sync with Gmail"
               >
                 <span className="sync-btn-text">Sync</span>
+              </Button>
+
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={handleRepair}
+                type="text"
+                className="flex items-center text-gray-400 hover:text-orange-600 transition-colors"
+                title="Repair email content"
+              >
+                <span className="sync-btn-text">Repair</span>
               </Button>
 
               <Dropdown
@@ -883,138 +905,29 @@ export default function InboxPage() {
               }}
               className={`email-detail-content ${!showMobileDetail ? 'hidden-mobile' : ''} [&::-webkit-scrollbar]:hidden`}
             >
-              {showMobileDetail && (
-                <Button
-                  icon={<ArrowLeftOutlined />}
-                  onClick={() => setShowMobileDetail(false)}
-                  style={{ margin: '16px' }}
-                  className="mobile-back-button"
-                >
-                  Back
-                </Button>
-              )}
-
-              {selectedEmail ? (
-                <div style={{ maxWidth: '900px', margin: '0 auto', padding: showMobileDetail ? '0 16px 16px' : '0' }}>
-                  <Space direction="vertical" size="large" style={{ width: '100%' }}>
-                    <div>
-                      <Title level={3}>{selectedEmail.subject}</Title>
-                      <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <Avatar style={{ backgroundColor: '#667eea' }}>
-                              {selectedEmail?.from?.name?.charAt(0) || selectedEmail?.from?.email?.charAt(0)?.toUpperCase() || 'U'}
-                          </Avatar>
-                          <div>
-                            <Text strong>{selectedEmail?.from?.name || selectedEmail?.from?.email || 'Unknown'}</Text>
-                            <br />
-                            <Text type="secondary" style={{ fontSize: '12px' }}>
-                              {selectedEmail?.from?.email}
-                            </Text>
-                          </div>
-                        </div>
-                        <div>
-                          <Text type="secondary">To: </Text>
-                          <Text>{selectedEmail?.to?.map(t => t.email).join(', ') || ''}</Text>
-                        </div>
-                        {selectedEmail.cc && selectedEmail.cc.length > 0 && (
-                          <div>
-                            <Text type="secondary">Cc: </Text>
-                            <Text>{selectedEmail.cc.map(c => c.email).join(', ')}</Text>
-                          </div>
-                        )}
-                        <Text type="secondary" style={{ fontSize: '12px' }}>
-                          {new Date(selectedEmail.receivedAt).toLocaleString()}
-                        </Text>
-                      </Space>
-                    </div>
-
-                    <Space wrap>
-                      <Button type="primary" onClick={() => selectedEmail && handleReply(selectedEmail)}>
-                        Reply
-                      </Button>
-                      <Button onClick={() => selectedEmail && handleReply(selectedEmail)}>
-                        Reply All
-                      </Button>
-                      <Button onClick={() => selectedEmail && handleForward(selectedEmail)}>
-                        Forward
-                      </Button>
-                      <Button icon={<StarOutlined />} onClick={(e) => handleStar(e, selectedEmail)}>
-                        {selectedEmail.isStarred ? 'Unstar' : 'Star'}
-                      </Button>
-                      <Button icon={<DeleteOutlined />} danger onClick={(e) => handleDelete(e, selectedEmail)}>Delete</Button>
-                      <Button
-                        icon={<ExportOutlined />}
-                        onClick={() => {
-                          const messageRef = selectedEmail.threadId || selectedEmail.id;
-                          window.open(`https://mail.google.com/mail/u/0/#inbox/${messageRef}`, '_blank', 'noopener,noreferrer');
-                        }}
-                        title="Open in Gmail"
-                      >
-                        Open in Gmail
-                      </Button>
-                    </Space>
-
-                    {selectedEmail.attachments && selectedEmail.attachments.length > 0 && (
-                      <Card title="Attachments" size="small">
-                        <Space direction="vertical" style={{ width: '100%' }}>
-                          {selectedEmail.attachments.map((attachment) => (
-                            <div
-                              key={attachment.id}
-                              style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                padding: '8px',
-                                background: '#f6f8fa',
-                                borderRadius: '4px'
-                              }}
-                            >
-                              <Space>
-                                <PaperClipOutlined />
-                                <div>
-                                  <Text strong>{attachment.filename}</Text>
-                                  <br />
-                                  <Text type="secondary" style={{ fontSize: '12px' }}>
-                                    {formatFileSize(attachment.size)}
-                                  </Text>
-                                </div>
-                              </Space>
-                              <Button size="small" onClick={() => handleDownloadAttachment(selectedEmail.id, attachment.id, attachment.filename)}>Download</Button>
-                            </div>
-                          ))}
-                        </Space>
-                      </Card>
-                    )}
-
-                    <Card>
-                      <iframe
-                        srcDoc={selectedEmail.body}
-                        title="Email Content"
-                        style={{
-                          width: '100%',
-                          minHeight: '400px',
-                          border: 'none',
-                          overflow: 'hidden',
-                        }}
-                        sandbox="allow-same-origin"
-                        onLoad={(e) => {
-                          const iframe = e.target as HTMLIFrameElement;
-                          if (iframe.contentDocument) {
-                            const height = iframe.contentDocument.body.scrollHeight;
-                            iframe.style.height = `${Math.max(height + 20, 400)}px`;
-                          }
-                        }}
-                      />
-                    </Card>
-                  </Space>
-                </div>
-              ) : (
-                <Empty
-                  description="Select an email to view details"
-                  style={{ marginTop: '20%' }}
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                />
-              )}
+              <EmailDetail
+                email={selectedEmail}
+                onBack={() => setShowMobileDetail(false)}
+                onStar={handleStar}
+                onDelete={handleDelete}
+                onReply={handleReply}
+                onForward={handleForward}
+                onRefresh={async (email) => {
+                  try {
+                    message.loading({ content: 'Refreshing email content...', key: 'refreshing-email' });
+                    await emailService.refreshEmail(email.id);
+                    const updated = await emailService.getEmailDetail(email.id);
+                    setSelectedEmail(updated);
+                    // Update the email in the list as well
+                    setEmails(prev => prev.map(e => e.id === email.id ? updated : e));
+                    message.success({ content: 'Email content refreshed!', key: 'refreshing-email' });
+                  } catch (error) {
+                    message.error({ content: 'Refresh failed', key: 'refreshing-email' });
+                  }
+                }}
+                onDownloadAttachment={handleDownloadAttachment}
+                showMobileDetail={showMobileDetail}
+              />
             </Content>
           </Layout>
         )}

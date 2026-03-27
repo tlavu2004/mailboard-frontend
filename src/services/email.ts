@@ -170,4 +170,20 @@ export const emailService = {
       params: { accountId, folderName, limit, page }
     });
   },
+
+  // Repair corrupted email bodies
+  repairEmails: async (): Promise<void> => {
+    if (USE_MOCK_API) {
+      return;
+    }
+    await apiClient.post('emails/repair');
+  },
+
+  // Force refresh a single email
+  refreshEmail: async (emailId: string): Promise<void> => {
+    if (USE_MOCK_API) {
+      return;
+    }
+    await apiClient.post(`emails/${emailId}/refresh`);
+  },
 };
