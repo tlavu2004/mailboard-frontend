@@ -47,9 +47,20 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
 
   // Generate Gmail URL for opening email in Gmail
   const getGmailUrl = (email: Email) => {
-    // Use threadId if available for better thread context, otherwise use email id
-    const messageRef = email.threadId || email.id;
-    return `https://mail.google.com/mail/u/0/#inbox/${messageRef}`;
+    // If we have a direct gmailLink from backend, use it
+    // But replace /u/0/ with /u/accountEmail/ if available to handle multi-account login
+    let url = email.gmailLink;
+    
+    if (!url) {
+      const msgId = email.messageId || email.id;
+      url = `https://mail.google.com/mail/u/0/#search/rfc822msgid:${encodeURIComponent(msgId)}`;
+    }
+
+    if (email.accountEmail && url.includes('/u/0/')) {
+      return url.replace('/u/0/', `/u/${encodeURIComponent(email.accountEmail)}/`);
+    }
+    
+    return url;
   };
 
   const handleOpenInGmail = () => {
@@ -127,9 +138,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             <Button icon={<StarOutlined />} onClick={(e) => onStar(e, email)}>
               {email.isStarred ? 'Unstar' : 'Star'}
             </Button>
-            <Button icon={<ReloadOutlined />} onClick={() => onRefresh && onRefresh(email)} title="Force re-fetch from Gmail">
-              Refresh Content
-            </Button>
+
             <Button icon={<DeleteOutlined />} danger onClick={(e) => onDelete(e, email)}>
               Delete
             </Button>

@@ -21,7 +21,11 @@ export interface Attachment {
 
 export interface Email {
   id: string;
+  messageId?: string;
   threadId?: string;
+  gmailMessageId?: string;
+  gmailLink?: string;
+  accountEmail?: string;
   mailboxId: string;
   from: EmailAddress;
   to: EmailAddress[];

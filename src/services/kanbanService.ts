@@ -5,6 +5,10 @@ import apiClient from './api';
 
 export interface KanbanCardType {
   id: string;
+  messageId?: string;
+  gmailMessageId?: string;
+  threadId?: string;
+  accountEmail?: string;
   sender: string;
   subject: string;
   summary: string;
@@ -25,6 +29,10 @@ export interface ColMeta {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const transformCard = (data: any): KanbanCardType => ({
   id: data.id,
+  messageId: data.message_id,
+  gmailMessageId: data.gmail_message_id,
+  threadId: data.thread_id,
+  accountEmail: data.account_email,
   sender: data.sender,
   subject: data.subject,
   summary: data.summary,

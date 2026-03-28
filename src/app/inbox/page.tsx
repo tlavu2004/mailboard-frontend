@@ -378,13 +378,17 @@ export default function InboxPage() {
       // Optimistic UI: Open modal immediately with available data
       const partialEmail: Email = {
         id: card.id,
+        messageId: card.messageId,
+        gmailMessageId: card.gmailMessageId,
+        threadId: card.threadId,
+        accountEmail: card.accountEmail,
         mailboxId: selectedMailbox || 'INBOX', // best guess
         from: { name: card.sender, email: '' }, // We don't have email address in board card yet
         to: [],
         subject: card.subject,
         preview: card.preview,
         body: '', // Empty body signals need to fetch
-        isRead: true, // Optimistically read
+        isRead: card.isRead,
         isStarred: false, // Unknown
         hasAttachments: card.hasAttachments,
         receivedAt: card.receivedAt,
