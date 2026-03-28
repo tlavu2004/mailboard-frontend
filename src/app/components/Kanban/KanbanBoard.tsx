@@ -156,50 +156,73 @@ export default function KanbanBoard({ onCardClick }: { onCardClick: (card: Kanba
     if (!over) return;
 
     const overId = over.id as string;
-
-    // Find source and destination containers
-    // Note: over.id could be a container (column key) or an item ID
-    // We treating column IDs as container IDs by direct match, or finding container if it's an item
     const activeContainer = findContainer(activeIdVal, columns);
     const overContainer = findContainer(overId, columns);
 
     if (!activeContainer || !overContainer) return;
 
-    if (activeContainer !== overContainer) {
-      // Moved to different column
-      const activeItems = columns[activeContainer];
+    if (activeContainer === overContainer && active.id === over.id) return;
 
-      const activeItem = activeItems.find(c => c.id === activeIdVal);
-      if (!activeItem) return;
+    // 1. Calculate new position and order
+    const sourceList = [...columns[activeContainer]];
+    const destList = activeContainer === overContainer ? sourceList : [...columns[overContainer]];
+    
+    const activeIndex = sourceList.findIndex(c => c.id === activeIdVal);
+    const overIndex = destList.findIndex(c => c.id === overId);
+    
+    // Option B: Default to top (index 0) if dropping on column itself
+    let newIndex = overIndex === -1 ? 0 : overIndex;
+    
+    // Remove from source
+    const [movedItem] = sourceList.splice(activeIndex, 1);
+    
+    // Adjust newIndex if moving within same container
+    if (activeContainer === overContainer && activeIndex < newIndex) {
+      // no-op, splice already handled the shift
+    }
 
-      // Optimistic Update
-      setColumns((prev) => {
-        const sourceList = [...prev[activeContainer]];
-        const destList = [...(prev[overContainer] || [])];
+    // Insert into destination
+    destList.splice(newIndex, 0, movedItem);
 
-        const itemIndex = sourceList.findIndex(c => c.id === activeIdVal);
-        const [movedItem] = sourceList.splice(itemIndex, 1);
+    // 2. Calculate kanbanOrder
+    // Since we sort by DESC, higher index means lower order.
+    // Neighbors for order calculation:
+    const prevItem = destList[newIndex - 1]; // Item above
+    const nextItem = destList[newIndex + 1]; // Item below
+    
+    let newOrder: number;
+    const GAP = 1000; // Large initial gap for new items
 
-        // If dropping on a card, insert before/after? For now just append or simplistic logic
-        // But better is to just append if dropping on column, or rely on sorting strategy if full reorder implemented.
-        // For simplicity: Append to new column. Backend doesn't support generic reordering *within* column yet (just status change).
-        destList.push(movedItem);
+    if (!prevItem && !nextItem) {
+      // Only item in column
+      newOrder = Date.now(); 
+    } else if (!prevItem) {
+      // Dropped at the top
+      newOrder = (nextItem.kanbanOrder || 0) + GAP;
+    } else if (!nextItem) {
+      // Dropped at the bottom
+      newOrder = (prevItem.kanbanOrder || 0) - GAP;
+    } else {
+      // Dropped between two items
+      newOrder = ((prevItem.kanbanOrder || 0) + (nextItem.kanbanOrder || 0)) / 2;
+    }
 
-        return {
-          ...prev,
-          [activeContainer]: sourceList,
-          [overContainer]: destList,
-        };
-      });
+    movedItem.kanbanOrder = newOrder;
 
-      // API Call
-      try {
-        await kanbanService.moveCard(activeIdVal, overContainer);
-      } catch (err) {
-        console.error("Move failed", err);
-        // Could Revert here
-        fetchBoard(); // easiest revert
-      }
+    // 3. Optimistic Update
+    setColumns((prev) => ({
+      ...prev,
+      [activeContainer]: sourceList,
+      [overContainer]: destList,
+    }));
+
+    // 4. API Call
+    try {
+      await kanbanService.moveCard(activeIdVal, overContainer, newOrder);
+    } catch (err) {
+      console.error("Move failed", err);
+      message.error("Failed to save new position");
+      fetchBoard(); // Revert
     }
   };
 

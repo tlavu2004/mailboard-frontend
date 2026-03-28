@@ -18,6 +18,7 @@ export interface KanbanCardType {
   receivedAt: string;
   isRead: boolean;
   hasAttachments: boolean;
+  kanbanOrder?: number;
 }
 
 export interface ColMeta {
@@ -42,6 +43,7 @@ const transformCard = (data: any): KanbanCardType => ({
   receivedAt: data.received_at,
   isRead: data.is_read,
   hasAttachments: data.has_attachments,
+  kanbanOrder: data.kanban_order,
 });
 
 export const kanbanService = {
@@ -69,8 +71,10 @@ export const kanbanService = {
     return response.data;
   },
 
-  moveCard: async (emailId: string, toStatus: string) => {
-    const response = await apiClient.post('kanban/move', { email_id: emailId, to_status: toStatus });
+  moveCard: async (emailId: string, toStatus: string, kanbanOrder?: number) => {
+    const payload: any = { email_id: emailId, to_status: toStatus };
+    if (kanbanOrder !== undefined) payload.kanban_order = kanbanOrder;
+    const response = await apiClient.post('kanban/move', payload);
     return response.data;
   },
 
