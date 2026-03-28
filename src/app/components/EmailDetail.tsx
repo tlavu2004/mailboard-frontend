@@ -101,7 +101,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: showMobileDetail ? '0 16px 16px' : '0' }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <div>
-            <Title level={3}>{email.subject}</Title>
+            <Title level={3} style={{ marginTop: '20px', marginBottom: '24px' }}>{email.subject}</Title>
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <Avatar style={{ backgroundColor: '#667eea' }}>

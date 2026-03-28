@@ -957,7 +957,7 @@ export default function InboxPage() {
             <Content
               style={{
                 background: '#fff',
-                padding: showMobileDetail ? '0' : '24px',
+                padding: showMobileDetail ? '0' : '80px 24px 24px 24px',
                 overflowY: 'auto',
                 height: '100%',
                 display: showMobileDetail ? 'block' : undefined,
