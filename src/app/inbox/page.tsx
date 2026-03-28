@@ -282,9 +282,14 @@ export default function InboxPage() {
     const newStarred = !email.isStarred;
 
     // Optimistic update FIRST (instant UI feedback)
-    const updateEmails = (list: Email[]) => list.map(e =>
-      e.id === email.id ? { ...e, isStarred: newStarred } : e
-    );
+    const updateEmails = (list: Email[]) => {
+      if (selectedMailbox === 'STARRED' && !newStarred) {
+        return list.filter(e => e.id !== email.id);
+      }
+      return list.map(e =>
+        e.id === email.id ? { ...e, isStarred: newStarred } : e
+      );
+    };
     setEmails(updateEmails(emails));
     if (selectedEmail?.id === email.id) {
       setSelectedEmail({ ...selectedEmail, isStarred: newStarred });
