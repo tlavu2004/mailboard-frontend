@@ -7,6 +7,7 @@ import {
   PaperClipOutlined,
   ExportOutlined,
   ReloadOutlined,
+  RobotOutlined,
 } from '@ant-design/icons';
 import { Email } from '@/types/email';
 
@@ -20,6 +21,8 @@ interface EmailDetailProps {
   onReply?: (email: Email) => void;
   onForward?: (email: Email) => void;
   onRefresh?: (email: Email) => void;
+  onSummarize?: (email: Email) => void;
+  loadingSummary?: boolean;
   onDownloadAttachment: (emailId: string, attachmentId: string, filename: string) => void;
   showMobileDetail: boolean;
   className?: string;
@@ -34,6 +37,8 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
   onReply,
   onForward,
   onRefresh,
+  onSummarize,
+  loadingSummary,
   onDownloadAttachment,
   showMobileDetail,
   className,
@@ -52,7 +57,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
     let url = email.gmailLink;
     
     if (!url) {
-      const msgId = email.messageId || email.id;
+      const msgId: string = email.messageId || email.id || '';
       url = `https://mail.google.com/mail/u/0/#search/rfc822msgid:${encodeURIComponent(msgId)}`;
     }
 
@@ -149,6 +154,15 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             >
               Open in Gmail
             </Button>
+            <Button 
+              icon={<RobotOutlined />} 
+              onClick={() => onSummarize && onSummarize(email)}
+              loading={loadingSummary}
+              disabled={email.summarySource === 'GEMINI'}
+              title={email.summarySource === 'GEMINI' ? "Already summarized by Gemini" : "Generate AI Summary"}
+            >
+              AI Summary
+            </Button>
           </Space>
 
           {email.attachments && email.attachments.length > 0 && (
@@ -187,6 +201,27 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                   </div>
                 ))}
               </Space>
+            </Card>
+          )}
+
+          {(email.summary || loadingSummary) && (
+            <Card 
+              size="small" 
+              title={<Space><RobotOutlined /> <Text strong>AI Summary</Text></Space>}
+              style={{ 
+                borderLeft: email.summarySource === 'GEMINI' ? '4px solid #48bb78' : '4px solid #667eea',
+                background: '#fcfdff'
+              }}
+            >
+              {loadingSummary ? (
+                <div style={{ textAlign: 'center', padding: '10px' }}>
+                  <Spin size="small" tip="Generative AI at work..." />
+                </div>
+              ) : (
+                <Text style={{ fontStyle: 'italic', color: '#4a5568' }}>
+                  {email.summary}
+                </Text>
+              )}
             </Card>
           )}
 

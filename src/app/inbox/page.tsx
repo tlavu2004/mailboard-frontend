@@ -30,7 +30,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { emailService } from '@/services/email';
 import { searchService } from '@/services/searchService';
 import apiClient from '@/services/api';
-import { Mailbox, Email } from '@/types/email';
+import { Mailbox, Email, ApiResponse } from '@/types/email';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import './inbox.css';
 
@@ -59,6 +59,7 @@ export default function InboxPage() {
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
   const [composeMode, setComposeMode] = useState<'compose' | 'reply' | 'forward'>('compose');
   const [replyToEmail, setReplyToEmail] = useState<Email | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -369,6 +370,45 @@ export default function InboxPage() {
     }
   };
 
+  const handleSummarize = async (email: Email) => {
+    setLoadingSummary(true);
+    try {
+      const response = await apiClient.post<string>(`emails/${email.id}/summarize`);
+      const newSummary = response.data;
+      
+      if (!newSummary) {
+        throw new Error('Empty summary returned');
+      }
+      
+      // Update selected email
+      if (selectedEmail?.id === email.id) {
+        setSelectedEmail({ 
+          ...selectedEmail, 
+          summary: newSummary,
+          summarySource: newSummary.startsWith('[Gemini]') ? 'GEMINI' : 
+                         newSummary.startsWith('[Local Algo]') ? 'LOCAL_ALGO' : 
+                         newSummary.startsWith('[Local Model]') ? 'LOCAL_MODEL' : undefined
+        });
+      }
+
+      // Update emails list
+      setEmails(prev => prev.map(e => e.id === email.id ? { 
+        ...e, 
+        summary: newSummary,
+        summarySource: newSummary.startsWith('[Gemini]') ? 'GEMINI' : 
+                       newSummary.startsWith('[Local Algo]') ? 'LOCAL_ALGO' : 
+                       newSummary.startsWith('[Local Model]') ? 'LOCAL_MODEL' : undefined
+      } : e));
+
+      message.success('Summary generated successfully');
+    } catch (error) {
+      console.error('Summarization failed:', error);
+      message.error('Failed to generate AI summary');
+    } finally {
+      setLoadingSummary(false);
+    }
+  };
+
   const handleKanbanModalClose = () => {
     setSelectedEmail(null);
   };
@@ -378,22 +418,23 @@ export default function InboxPage() {
       // Optimistic UI: Open modal immediately with available data
       const partialEmail: Email = {
         id: card.id,
-        messageId: card.messageId,
+        messageId: card.messageId || '', // Ensure messageId is present
         gmailMessageId: card.gmailMessageId,
         threadId: card.threadId,
         accountEmail: card.accountEmail,
-        mailboxId: selectedMailbox || 'INBOX', // best guess
-        from: { name: card.sender, email: '' }, // We don't have email address in board card yet
+        mailboxId: selectedMailbox || 'INBOX', 
+        from: { name: card.sender, email: card.accountEmail || '' }, 
         to: [],
         subject: card.subject,
         preview: card.preview,
-        body: '', // Empty body signals need to fetch
+        body: '', 
         isRead: card.isRead,
-        isStarred: false, // Unknown
+        isStarred: false, 
         hasAttachments: card.hasAttachments,
         receivedAt: card.receivedAt,
         createdAt: card.receivedAt,
-        summary: card.summary
+        summary: card.summary,
+        summarySource: undefined
       };
 
       setSelectedEmail(partialEmail);
@@ -647,6 +688,8 @@ export default function InboxPage() {
                     }}
                     onReply={handleReply}
                     onForward={handleForward}
+                    onSummarize={handleSummarize}
+                    loadingSummary={loadingSummary}
                     onDownloadAttachment={handleDownloadAttachment}
                     showMobileDetail={false}
                   />
@@ -681,6 +724,8 @@ export default function InboxPage() {
                     }}
                     onReply={handleReply}
                     onForward={handleForward}
+                    onSummarize={handleSummarize}
+                    loadingSummary={loadingSummary}
                     onDownloadAttachment={handleDownloadAttachment}
                     showMobileDetail={false}
                   />
@@ -916,6 +961,8 @@ export default function InboxPage() {
                 onDelete={handleDelete}
                 onReply={handleReply}
                 onForward={handleForward}
+                onSummarize={handleSummarize}
+                loadingSummary={loadingSummary}
                 onRefresh={async (email) => {
                   try {
                     message.loading({ content: 'Refreshing email content...', key: 'refreshing-email' });

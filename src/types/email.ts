@@ -41,6 +41,13 @@ export interface Email {
   receivedAt: string;
   createdAt: string;
   summary?: string;
+  summarySource?: string;
+}
+
+export interface ApiResponse<T> {
+  success: boolean;
+  message: string;
+  data: T;
 }
 
 export interface EmailListResponse {
