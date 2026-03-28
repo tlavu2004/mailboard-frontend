@@ -7,6 +7,7 @@ import ComposeModal from '@/components/ComposeModal';
 import {
   InboxOutlined,
   StarOutlined,
+  StarFilled,
   SendOutlined,
   FileOutlined,
   DeleteOutlined,
@@ -292,7 +293,11 @@ export default function InboxPage() {
     };
     setEmails(updateEmails(emails));
     if (selectedEmail?.id === email.id) {
-      setSelectedEmail({ ...selectedEmail, isStarred: newStarred });
+      if (selectedMailbox === 'STARRED' && !newStarred) {
+        setSelectedEmail(null);
+      } else {
+        setSelectedEmail({ ...selectedEmail, isStarred: newStarred });
+      }
     }
     message.success(originalStarred ? 'Unstarred' : 'Starred');
 
@@ -901,8 +906,11 @@ export default function InboxPage() {
                               <Text strong={!email.isRead} style={{ fontSize: '14px', color: !email.isRead ? '#262626' : '#595959' }}>
                                 {email?.from?.name || email?.from?.email || 'Unknown Sender'}
                               </Text>
-                              <div onClick={(e) => handleStar(e, email)}>
-                                {email.isStarred ? <StarOutlined style={{ color: '#faad14' }} /> : <StarOutlined style={{ color: '#d9d9d9' }} />}
+                              <div 
+                                onClick={(e) => handleStar(e, email)}
+                                style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+                              >
+                                {email.isStarred ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined style={{ color: '#d9d9d9' }} />}
                               </div>
                               {email.hasAttachments && <PaperClipOutlined />}
                             </Space>

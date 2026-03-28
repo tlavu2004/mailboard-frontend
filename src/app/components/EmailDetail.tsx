@@ -3,6 +3,7 @@ import { Button, Typography, Space, Avatar, Card, Empty, Spin } from 'antd';
 import {
   ArrowLeftOutlined,
   StarOutlined,
+  StarFilled,
   DeleteOutlined,
   PaperClipOutlined,
   ExportOutlined,
@@ -140,7 +141,10 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             <Button onClick={() => onForward && onForward(email)}>
               Forward
             </Button>
-            <Button icon={<StarOutlined />} onClick={(e) => onStar(e, email)}>
+            <Button 
+              icon={email.isStarred ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined />} 
+              onClick={(e) => onStar(e, email)}
+            >
               {email.isStarred ? 'Unstar' : 'Star'}
             </Button>
 
