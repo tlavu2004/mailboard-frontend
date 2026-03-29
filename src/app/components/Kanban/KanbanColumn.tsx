@@ -26,23 +26,23 @@ const getColumnConfig = (id: string, label: string) => {
   const lowerId = id.toLowerCase();
   
   if (lowerId.includes('inbox') || label.toLowerCase().includes('inbox')) {
-     return { bg: 'bg-blue-50', icon: <InboxOutlined />, iconColor: 'text-blue-500', badgeColor: 'bg-blue-200 text-blue-700' };
+     return { bg: 'bg-white', icon: <InboxOutlined />, iconColor: 'text-blue-500', badgeColor: 'bg-blue-50 text-blue-600' };
   }
   if (lowerId.includes('todo') || lowerId.includes('to do')) {
-     return { bg: 'bg-orange-50', icon: <ThunderboltFilled />, iconColor: 'text-orange-500', badgeColor: 'bg-orange-200 text-orange-700' };
+     return { bg: 'bg-white', icon: <ThunderboltFilled />, iconColor: 'text-orange-500', badgeColor: 'bg-orange-50 text-orange-600' };
   }
   if (lowerId.includes('process')) {
-     return { bg: 'bg-purple-50', icon: <ProjectOutlined />, iconColor: 'text-purple-500', badgeColor: 'bg-purple-200 text-purple-700' };
+     return { bg: 'bg-white', icon: <ProjectOutlined />, iconColor: 'text-purple-500', badgeColor: 'bg-purple-50 text-purple-600' };
   }
   if (lowerId.includes('snoozed')) {
-     return { bg: 'bg-indigo-50', icon: <ClockCircleOutlined />, iconColor: 'text-indigo-400', badgeColor: 'bg-indigo-200 text-indigo-700' };
+     return { bg: 'bg-white', icon: <ClockCircleOutlined />, iconColor: 'text-indigo-400', badgeColor: 'bg-indigo-50 text-indigo-600' };
   }
   if (lowerId.includes('done')) {
-     return { bg: 'bg-green-50', icon: <CheckSquareFilled />, iconColor: 'text-green-500', badgeColor: 'bg-green-200 text-green-700' };
+     return { bg: 'bg-white', icon: <CheckSquareFilled />, iconColor: 'text-green-500', badgeColor: 'bg-green-50 text-green-600' };
   }
 
   // Default for custom columns
-  return { bg: 'bg-gray-50', icon: <TagOutlined />, iconColor: 'text-gray-500', badgeColor: 'bg-gray-200 text-gray-700' };
+  return { bg: 'bg-white', icon: <TagOutlined />, iconColor: 'text-gray-500', badgeColor: 'bg-gray-100 text-gray-600' };
 }
 
 // ... imports remain the same

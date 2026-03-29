@@ -25,7 +25,17 @@ import KanbanColumn from './KanbanColumn';
 import KanbanCard from './KanbanCard';
 import KanbanSettingsModal from './KanbanSettingsModal';
 
-export default function KanbanBoard({ onCardClick }: { onCardClick: (card: KanbanCardType) => void }) {
+import { FilterState, SortMode } from '../FilterBar';
+
+export default function KanbanBoard({ 
+  onCardClick,
+  filters,
+  sortMode
+}: { 
+  onCardClick: (card: KanbanCardType) => void,
+  filters: FilterState,
+  sortMode: SortMode
+}) {
   const [columns, setColumns] = useState<Record<string, KanbanCardType[]>>({});
   const [meta, setMeta] = useState<ColMeta[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,12 +61,6 @@ export default function KanbanBoard({ onCardClick }: { onCardClick: (card: Kanba
     }
   }, []);
 
-  // Sorting & Filtering
-  const [sortMode, setSortMode] = useState<'date-desc' | 'date-asc' | 'sender'>('date-desc');
-  const [filters, setFilters] = useState({
-    unread: false,
-    hasAttachment: false
-  });
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -272,82 +276,14 @@ export default function KanbanBoard({ onCardClick }: { onCardClick: (card: Kanba
   }
 
   return (
-    <div className="h-full overflow-x-auto p-5 bg-gray-50">
-      {/* Controls Container */}
-      <div className="mb-6 flex flex-wrap items-center gap-4 bg-white p-2 rounded-xl border border-gray-100 shadow-sm w-fit">
-
-        {/* Filter Section */}
-        <div className="flex items-center gap-3 pl-2">
-          <div className="flex items-center gap-2 text-gray-500 font-medium">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-            </svg>
-            <span>Filter:</span>
-          </div>
-
-          <button
-            onClick={() => setFilters(prev => ({ ...prev, unread: !prev.unread }))}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all ${filters.unread ? 'border-blue-200 bg-blue-50 text-blue-700 font-medium' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
-          >
-            <div className={`w-4 h-4 rounded border flex items-center justify-center ${filters.unread ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
-              {filters.unread && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
-            </div>
-            Unread
-          </button>
-
-          <button
-            onClick={() => setFilters(prev => ({ ...prev, hasAttachment: !prev.hasAttachment }))}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all ${filters.hasAttachment ? 'border-blue-200 bg-blue-50 text-blue-700 font-medium' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
-          >
-            <div className={`w-4 h-4 rounded border flex items-center justify-center ${filters.hasAttachment ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
-              {filters.hasAttachment && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
-            </div>
-            Has attachment
-          </button>
-        </div>
-
-        {/* Divider */}
-        <div className="h-6 w-px bg-gray-200 mx-1"></div>
-
-        {/* Sort Section */}
-        <div className="flex items-center gap-3 pr-2">
-          <div className="flex items-center gap-2 text-gray-500 font-medium">
-            <ReloadOutlined className={loading ? "animate-spin" : ""} />
-            <span>Sort:</span>
-          </div>
-
-          <div className="relative">
-            <select
-              value={sortMode}
-              onChange={(e) => setSortMode(e.target.value as 'date-desc' | 'date-asc' | 'sender')}
-              className="appearance-none bg-white border border-gray-200 text-gray-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-3 pr-8 py-1.5 outline-none cursor-pointer hover:border-gray-300 transition-colors"
-            >
-              <option value="date-desc">Newest First</option>
-              <option value="date-asc">Oldest First</option>
-              <option value="sender">Sender Name</option>
-            </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-            </div>
-          </div>
-        </div>
-
-        <div className="ml-auto pl-2 flex items-center gap-2">
-          <button title="Board Settings" onClick={() => setSettingsOpen(true)} className="p-2 text-gray-400 hover:text-blue-600 transition-colors">
-            <SettingOutlined />
-          </button>
-          <button 
-            title="Sync with Gmail" 
-            onClick={handleSync} 
-            disabled={syncLoading}
-            className={`p-2 transition-colors ${syncLoading ? 'text-gray-300' : 'text-gray-400 hover:text-blue-600'}`}
-          >
-            <CloudSyncOutlined spin={syncLoading} />
-          </button>
-          <button title="Refresh Board" onClick={fetchBoard} className="p-2 text-gray-400 hover:text-blue-600 transition-colors">
-            <ReloadOutlined spin={loading} />
-          </button>
-        </div>
+    <div className="h-full overflow-x-auto p-5 bg-gray-50 flex flex-col">
+      <div className="flex justify-end mb-4 gap-2">
+        <button title="Board Settings" onClick={() => setSettingsOpen(true)} className="p-2 text-gray-400 hover:text-blue-600 transition-colors bg-white rounded-lg border border-gray-100 shadow-sm">
+          <SettingOutlined />
+        </button>
+        <button title="Refresh Board" onClick={fetchBoard} className="p-2 text-gray-400 hover:text-blue-600 transition-colors bg-white rounded-lg border border-gray-100 shadow-sm">
+          <ReloadOutlined spin={loading} />
+        </button>
       </div>
 
       <DndContext

@@ -27,6 +27,7 @@ import {
 import KanbanBoard from '@/app/components/Kanban/KanbanBoard';
 import SearchResults from '@/app/components/SearchResults';
 import SearchInput from '@/app/components/SearchInput';
+import FilterBar, { FilterState, SortMode } from '@/app/components/FilterBar';
 import { useAuth } from '@/contexts/AuthContext';
 import { emailService } from '@/services/email';
 import { searchService } from '@/services/searchService';
@@ -78,6 +79,13 @@ export default function InboxPage() {
   const [searchScores, setSearchScores] = useState<Record<string, number>>({});
   const [searchMode, setSearchMode] = useState<'semantic' | 'text'>('semantic');
   const [syncLoading, setSyncLoading] = useState(false);
+
+  // Filter & Sort state
+  const [filters, setFilters] = useState<FilterState>({
+    unread: false,
+    hasAttachment: false,
+  });
+  const [sortMode, setSortMode] = useState<SortMode>('date-desc');
 
   useEffect(() => {
     const savedView = localStorage.getItem('viewMode');
@@ -135,10 +143,16 @@ export default function InboxPage() {
     }
   }, [setMailboxes, setSelectedMailbox]);
 
-  const loadEmails = useCallback(async (mailboxId: string, page: number = 1, perPage: number = pageSize) => {
+  const loadEmails = useCallback(async (
+    mailboxId: string, 
+    page: number = 1, 
+    perPage: number = pageSize,
+    unread?: boolean,
+    hasAttachments?: boolean
+  ) => {
     setEmailsLoading(true);
     try {
-      const data = await emailService.getEmails(mailboxId, page, perPage);
+      const data = await emailService.getEmails(mailboxId, page, perPage, unread, hasAttachments);
       setEmails(data.emails || []);
       setTotalEmails(data.total || 0);
       setCurrentPage(page);
@@ -180,16 +194,16 @@ export default function InboxPage() {
 
   useEffect(() => {
     if (selectedMailbox) {
-      loadEmails(selectedMailbox);
+      loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
     }
-  }, [selectedMailbox, loadEmails]);
+  }, [selectedMailbox, loadEmails, pageSize, filters.unread, filters.hasAttachment]);
 
   const handlePageChange = (page: number, size?: number) => {
     const newPageSize = size || pageSize;
     if (size && size !== pageSize) {
       setPageSize(size);
     }
-    loadEmails(selectedMailbox, page, newPageSize);
+    loadEmails(selectedMailbox, page, newPageSize, filters.unread, filters.hasAttachment);
   };
 
   const handleMailboxSelect = (mailboxId: string) => {
@@ -225,7 +239,7 @@ export default function InboxPage() {
   };
 
   const handleRefresh = () => {
-    loadEmails(selectedMailbox);
+    loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
     message.success('Refreshed');
   };
 
@@ -592,27 +606,6 @@ export default function InboxPage() {
                 </button>
               </div>
 
-              <Button
-                icon={<CloudSyncOutlined spin={syncLoading} />}
-                onClick={handleSync}
-                loading={syncLoading}
-                type="text"
-                className="flex items-center text-gray-400 hover:text-blue-600 transition-colors"
-                title="Sync with Gmail"
-              >
-                <span className="sync-btn-text">Sync</span>
-              </Button>
-
-              <Button
-                icon={<ReloadOutlined />}
-                onClick={handleRepair}
-                type="text"
-                className="flex items-center text-gray-400 hover:text-orange-600 transition-colors"
-                title="Repair email content"
-              >
-                <span className="sync-btn-text">Repair</span>
-              </Button>
-
               <Dropdown
                 menu={{
                   items: [
@@ -657,6 +650,20 @@ export default function InboxPage() {
             </Space>
           </div>
         </Header>
+
+        <div className="px-4 pt-4 bg-white">
+          <FilterBar 
+            filters={filters}
+            sortMode={sortMode}
+            onFilterChange={setFilters}
+            onSortChange={setSortMode}
+            onSync={handleSync}
+            onRepair={handleRepair}
+            onRefresh={handleRefresh}
+            syncLoading={syncLoading}
+            refreshLoading={emailsLoading}
+          />
+        </div>
 
         {isSearching ? (
           <Content style={{ flex: 1, overflow: 'hidden' }}>
@@ -709,7 +716,11 @@ export default function InboxPage() {
           </Content>
         ) : viewMode === 'kanban' ? (
           <Content style={{ flex: 1, overflow: 'hidden', background: '#fff' }}>
-            <KanbanBoard onCardClick={handleKanbanCardClick} />
+            <KanbanBoard 
+              onCardClick={handleKanbanCardClick} 
+              filters={filters}
+              sortMode={sortMode}
+            />
 
             {/* Modal for Kanban Detail View */}
             <Modal
