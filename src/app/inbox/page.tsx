@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Layout, Menu, List, Card, Button, Badge, Typography, Space, Avatar, Spin, message, Empty, Modal, Pagination, Dropdown, Drawer } from 'antd';
 import EmailDetail from '@/app/components/EmailDetail';
 import ComposeModal from '@/components/ComposeModal';
@@ -34,6 +34,7 @@ import { searchService } from '@/services/searchService';
 import apiClient from '@/services/api';
 import { Mailbox, Email, ApiResponse } from '@/types/email';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import { useEmailNotifications } from '@/hooks/useEmailNotifications';
 import './inbox.css';
 
 const { Header, Sider, Content } = Layout;
@@ -62,6 +63,7 @@ export default function InboxPage() {
   const [composeMode, setComposeMode] = useState<'compose' | 'reply' | 'forward'>('compose');
   const [replyToEmail, setReplyToEmail] = useState<Email | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
+  const [accountId, setAccountId] = useState<number | null>(null);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -132,10 +134,13 @@ export default function InboxPage() {
   const loadMailboxes = useCallback(async () => {
     try {
       const data = await emailService.getMailboxes();
-      setMailboxes(data || []);
-      if (data && data.length > 0) {
-        const inbox = data.find(m => m.id === 'INBOX');
-        setSelectedMailbox(prev => prev || (inbox ? 'INBOX' : data[0].id));
+      setMailboxes(data.mailboxes || []);
+      if (data.accountId) {
+        setAccountId(data.accountId);
+      }
+      if (data.mailboxes && data.mailboxes.length > 0) {
+        const inbox = data.mailboxes.find(m => m.id === 'INBOX');
+        setSelectedMailbox(prev => prev || (inbox ? 'INBOX' : data.mailboxes[0].id));
       }
     } catch (error) {
       message.error('Failed to load mailboxes');
@@ -268,6 +273,18 @@ export default function InboxPage() {
       message.error({ content: 'Repair failed', key: 'repairing' });
     }
   };
+
+  // Handle real-time notifications
+  const handleNotification = useCallback((msg: { type: string; message: string }) => {
+    if (msg.type === 'NEW_EMAILS') {
+      message.info('New emails received!');
+      // Refresh both mailboxes (for unread count) and current emails
+      loadMailboxes();
+      loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
+    }
+  }, [selectedMailbox, loadMailboxes, loadEmails, pageSize, filters]);
+
+  useEmailNotifications(accountId, handleNotification);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);

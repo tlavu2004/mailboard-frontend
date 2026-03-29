@@ -4,14 +4,14 @@ import { Mailbox, Email, EmailListResponse } from '@/types/email';
 
 export const emailService = {
   // Get all mailboxes
-  getMailboxes: async (): Promise<Mailbox[]> => {
+  getMailboxes: async (): Promise<{ mailboxes: Mailbox[], accountId?: number }> => {
     if (USE_MOCK_API) {
       const mockData = await mockEmailApi.getMailboxes();
-      return mockData.mailboxes;
+      return { mailboxes: mockData.mailboxes };
     }
     
-    const response = await apiClient.get<{ mailboxes: Mailbox[] }>('mailboxes');
-    return response.data.mailboxes;
+    const response = await apiClient.get<{ mailboxes: Mailbox[], accountId?: number }>('mailboxes');
+    return response.data;
   },
 
   // Get emails for a specific mailbox
