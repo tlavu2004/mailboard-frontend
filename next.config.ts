@@ -10,10 +10,10 @@ const nextConfig: NextConfig = {
 
 export default withPWA({
   dest: 'public',
-  cacheOnFrontEndNav: true,
-  aggressiveFrontEndNavCaching: true,
+  cacheOnFrontEndNav: false,
+  aggressiveFrontEndNavCaching: false,
   reloadOnOnline: true,
-  disable: false, // Set to true in development if needed
+  disable: true,
   workboxOptions: {
     disableDevLogs: true,
   },
