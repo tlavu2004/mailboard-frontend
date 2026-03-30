@@ -152,7 +152,7 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose
       key: `new_column_${Date.now()}`,
       label: 'New Column',
       gmailLabel: '',
-      color: '#64748b',
+      color: '#f1f5f9',
       order: columns.length,
       isDefault: false,
       userId: ''
@@ -164,7 +164,7 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose
       const newColumn = await kanbanService.createColumn({
         label: 'New Column',
         gmailLabel: '',
-        color: '#64748b',
+        color: '#f1f5f9',
       });
       setColumns(prev => prev.map(col => col.id === tempId ? newColumn : col).sort((a, b) => a.order - b.order));
       setEditingColumn(newColumn);

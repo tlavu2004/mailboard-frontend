@@ -64,6 +64,7 @@ export default function InboxPage() {
   const [replyToEmail, setReplyToEmail] = useState<Email | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [accountId, setAccountId] = useState<number | null>(null);
+  const [kanbanSettingsOpen, setKanbanSettingsOpen] = useState(false);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -740,6 +741,7 @@ export default function InboxPage() {
             onSync={handleSync}
             onRepair={handleRepair}
             onRefresh={handleRefresh}
+            onSettings={viewMode === 'kanban' ? () => setKanbanSettingsOpen(true) : undefined}
             syncLoading={syncLoading}
             refreshLoading={emailsLoading}
           />
@@ -801,6 +803,8 @@ export default function InboxPage() {
               filters={filters}
               sortMode={sortMode}
               accountId={accountId}
+              settingsOpen={kanbanSettingsOpen}
+              onSettingsClose={() => setKanbanSettingsOpen(false)}
             />
 
             {/* Modal for Kanban Detail View */}

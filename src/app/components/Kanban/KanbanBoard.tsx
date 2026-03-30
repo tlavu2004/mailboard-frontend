@@ -32,19 +32,22 @@ export default function KanbanBoard({
   onCardClick,
   filters,
   sortMode,
-  accountId
+  accountId,
+  settingsOpen,
+  onSettingsClose
 }: { 
   onCardClick: (card: KanbanCardType) => void,
   filters: FilterState,
   sortMode: SortMode,
-  accountId: number | string | null
+  accountId: number | string | null,
+  settingsOpen: boolean,
+  onSettingsClose: () => void
 }) {
   const [columns, setColumns] = useState<Record<string, KanbanCardType[]>>({});
   const [meta, setMeta] = useState<ColMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [syncLoading, setSyncLoading] = useState(false);
 
   // Fetch only column metadata (lighter than full board)
@@ -288,15 +291,7 @@ export default function KanbanBoard({
   }
 
   return (
-    <div className="h-full overflow-x-auto p-5 bg-gray-50 flex flex-col">
-      <div className="flex justify-end mb-4 gap-2">
-        <button title="Board Settings" onClick={() => setSettingsOpen(true)} className="p-2 text-gray-400 hover:text-blue-600 transition-colors bg-white rounded-lg border border-gray-100 shadow-sm">
-          <SettingOutlined />
-        </button>
-        <button title="Refresh Board" onClick={fetchBoard} className="p-2 text-gray-400 hover:text-blue-600 transition-colors bg-white rounded-lg border border-gray-100 shadow-sm">
-          <ReloadOutlined spin={loading} />
-        </button>
-      </div>
+    <div className="h-full overflow-x-auto p-5 bg-gray-50 flex flex-col pt-0">
 
       <DndContext
         sensors={sensors}
@@ -325,7 +320,7 @@ export default function KanbanBoard({
 
       <KanbanSettingsModal
         open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
+        onClose={onSettingsClose}
         onColumnsChanged={fetchColumnsMeta}
       />
     </div>

@@ -58,7 +58,13 @@ function KanbanColumn({ id, label, color, cards, onRefresh, onCardClick }: Kanba
   const bgClass = color ? '' : config.bg;
 
   return (
-    <div className={`flex h-full w-[320px] shrink-0 flex-col rounded-xl px-2 py-3 ${bgClass}`} style={bgStyle}>
+    <div 
+      className={`relative flex h-full w-[380px] shrink-0 flex-col rounded-2xl px-4 py-5 border border-gray-100 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.08)] transition-all ${bgClass}`} 
+      style={bgStyle}
+    >
+      {/* Top Accent Border */}
+      <div className={`absolute top-0 left-0 right-0 h-1 rounded-t-2xl ${config.iconColor.replace('text', 'bg')}`} />
+      
       {/* Header */}
       <div className="mb-4 flex items-center justify-between px-2">
         <div className="flex items-center gap-2">
