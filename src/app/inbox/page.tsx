@@ -131,20 +131,26 @@ export default function InboxPage() {
     setIsComposeVisible(true);
   };
 
-  const loadMailboxes = useCallback(async () => {
+  const loadMailboxes = useCallback(async (): Promise<string | null> => {
     try {
+      console.log('[InboxPage] loadMailboxes: starting...');
       const data = await emailService.getMailboxes();
+      console.log('[InboxPage] loadMailboxes: got', data.mailboxes?.length, 'mailboxes, accountId:', data.accountId);
       setMailboxes(data.mailboxes || []);
       if (data.accountId) {
         setAccountId(data.accountId);
       }
       if (data.mailboxes && data.mailboxes.length > 0) {
         const inbox = data.mailboxes.find(m => m.id === 'INBOX');
-        setSelectedMailbox(prev => prev || (inbox ? 'INBOX' : data.mailboxes[0].id));
+        const targetMailbox = inbox ? 'INBOX' : data.mailboxes[0].id;
+        setSelectedMailbox(prev => prev || targetMailbox);
+        return targetMailbox;
       }
+      return null;
     } catch (error) {
+      console.error('[InboxPage] loadMailboxes: FAILED', error);
       message.error('Failed to load mailboxes');
-      console.error(error);
+      return null;
     }
   }, [setMailboxes, setSelectedMailbox]);
 
@@ -155,30 +161,74 @@ export default function InboxPage() {
     unread?: boolean,
     hasAttachments?: boolean
   ) => {
+    if (!mailboxId) {
+      console.warn('[InboxPage] loadEmails: skipped, no mailboxId');
+      return;
+    }
+    console.log('[InboxPage] loadEmails: loading', mailboxId, 'page', page);
     setEmailsLoading(true);
     try {
-      const data = await emailService.getEmails(mailboxId, page, perPage, unread, hasAttachments);
-      setEmails(data.emails || []);
+      let data = await emailService.getEmails(mailboxId, page, perPage, unread, hasAttachments);
+      console.log('[InboxPage] loadEmails: raw response:', JSON.stringify(data).substring(0, 200));
+      
+      // Robust unwrapping: If data itself is an ApiResponse (success/data), unwrap it manually
+      if (data && (data as any).success !== undefined && (data as any).data !== undefined) {
+        console.log('[InboxPage] loadEmails: unwrapping nested ApiResponse');
+        data = (data as any).data;
+      }
+
+      const emailList = data.emails || [];
+      console.log('[InboxPage] loadEmails: found', emailList.length, 'emails, total:', data.total);
+      setEmails(emailList);
       setTotalEmails(data.total || 0);
       setCurrentPage(page);
       setSelectedEmail(null);
     } catch (error) {
+      console.error('[InboxPage] loadEmails: FAILED', error);
       message.error('Failed to load emails');
-      console.error(error);
     } finally {
       setEmailsLoading(false);
     }
   }, [pageSize]);
 
+  // Primary initialization: load mailboxes THEN load emails in sequence
   useEffect(() => {
-    loadMailboxes();
-  }, [loadMailboxes]);
+    let cancelled = false;
+    const init = async () => {
+      console.log('[InboxPage] init: starting mailbox + email load sequence');
+      const mailboxId = await loadMailboxes();
+      if (cancelled) return;
+      if (mailboxId) {
+        console.log('[InboxPage] init: mailboxes loaded, now loading emails for', mailboxId);
+        await loadEmails(mailboxId, 1, pageSize, filters.unread, filters.hasAttachment);
+      } else {
+        console.warn('[InboxPage] init: no mailbox returned, emails will not load');
+      }
+    };
+    init();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Auto-generate embeddings on first visit (once per session)
+  // When selectedMailbox changes AFTER initial load (e.g. user clicks sidebar), reload emails
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  useEffect(() => {
+    if (!initialLoadDone && selectedMailbox) {
+      // Mark initial load as done after first selectedMailbox is set
+      setInitialLoadDone(true);
+      return;
+    }
+    if (initialLoadDone && selectedMailbox) {
+      console.log('[InboxPage] selectedMailbox changed to', selectedMailbox, '- reloading emails');
+      loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMailbox, filters.unread, filters.hasAttachment]);
+
   // Auto-generate embeddings periodically (every 2 minutes)
   useEffect(() => {
     const generate = () => {
-      searchService.generateEmbeddings(50) // Process small batches frequentyl
+      searchService.generateEmbeddings(50)
         .then(result => {
           if (result.processed > 0) {
             console.log(`Auto-generated embeddings for ${result.processed} emails`);
@@ -186,22 +236,10 @@ export default function InboxPage() {
         })
         .catch(err => console.error('Auto-embedding failed:', err));
     };
-
-    // Initial call
     generate();
-
-    // Loop
-    const interval = setInterval(generate, 2 * 60 * 1000); // 2 minutes
+    const interval = setInterval(generate, 2 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
-
-
-
-  useEffect(() => {
-    if (selectedMailbox) {
-      loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
-    }
-  }, [selectedMailbox, loadEmails, pageSize, filters.unread, filters.hasAttachment]);
 
   const handlePageChange = (page: number, size?: number) => {
     const newPageSize = size || pageSize;
@@ -277,10 +315,14 @@ export default function InboxPage() {
   // Handle real-time notifications
   const handleNotification = useCallback((msg: { type: string; message: string }) => {
     if (msg.type === 'NEW_EMAILS') {
-      message.info('New emails received!');
-      // Refresh both mailboxes (for unread count) and current emails
-      loadMailboxes();
-      loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
+      message.info('New emails received! Syncing...');
+      
+      // Add a small delay (500ms) to ensure DB transaction is fully committed
+      // before we fetch the data in our current thread
+      setTimeout(() => {
+        loadMailboxes();
+        loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
+      }, 500);
     }
   }, [selectedMailbox, loadMailboxes, loadEmails, pageSize, filters]);
 
@@ -737,6 +779,7 @@ export default function InboxPage() {
               onCardClick={handleKanbanCardClick} 
               filters={filters}
               sortMode={sortMode}
+              accountId={accountId}
             />
 
             {/* Modal for Kanban Detail View */}

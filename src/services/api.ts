@@ -50,10 +50,12 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => {
     // If the response is wrapped in our ApiResponse structure, unwrap it
-    if (response.data && response.data.hasOwnProperty('success') && response.data.hasOwnProperty('data')) {
+    // Using 'in' operator instead of hasOwnProperty for better robustness
+    const data = response.data;
+    if (data && typeof data === 'object' && 'success' in data && 'data' in data) {
       return {
         ...response,
-        data: response.data.data
+        data: data.data
       };
     }
     return response;

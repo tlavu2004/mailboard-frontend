@@ -25,16 +25,19 @@ import KanbanColumn from './KanbanColumn';
 import KanbanCard from './KanbanCard';
 import KanbanSettingsModal from './KanbanSettingsModal';
 
+import { useEmailNotifications } from '@/hooks/useEmailNotifications';
 import { FilterState, SortMode } from '../FilterBar';
 
 export default function KanbanBoard({ 
   onCardClick,
   filters,
-  sortMode
+  sortMode,
+  accountId
 }: { 
   onCardClick: (card: KanbanCardType) => void,
   filters: FilterState,
-  sortMode: SortMode
+  sortMode: SortMode,
+  accountId: number | string | null
 }) {
   const [columns, setColumns] = useState<Record<string, KanbanCardType[]>>({});
   const [meta, setMeta] = useState<ColMeta[]>([]);
@@ -126,6 +129,16 @@ export default function KanbanBoard({
   useEffect(() => {
     fetchBoard();
   }, [fetchBoard]);
+
+  // Handle real-time notifications
+  const handleNotification = useCallback((msg: { type: string; message: string }) => {
+    if (msg.type === 'NEW_EMAILS') {
+      message.info('New emails received! Updating Kanban...');
+      fetchBoard();
+    }
+  }, [fetchBoard]);
+
+  useEmailNotifications(accountId, handleNotification);
 
   const handleSync = async () => {
     setSyncLoading(true);
