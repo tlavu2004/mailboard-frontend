@@ -16,7 +16,7 @@ export interface FilterState {
   hasAttachment: boolean;
 }
 
-export type SortMode = 'date-desc' | 'date-asc' | 'sender';
+export type SortMode = 'date-desc' | 'date-asc' | 'sender-asc' | 'sender-desc';
 
 interface FilterBarProps {
   filters: FilterState;
@@ -120,7 +120,8 @@ export default function FilterBar({
           options={[
             { value: 'date-desc', label: 'Newest First' },
             { value: 'date-asc', label: 'Oldest First' },
-            { value: 'sender', label: 'By Sender' },
+            { value: 'sender-asc', label: 'Sender (A-Z)' },
+            { value: 'sender-desc', label: 'Sender (Z-A)' },
           ]}
         />
       </div>

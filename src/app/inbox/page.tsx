@@ -159,16 +159,37 @@ export default function InboxPage() {
     page: number = 1, 
     perPage: number = pageSize,
     unread?: boolean,
-    hasAttachments?: boolean
+    hasAttachments?: boolean,
+    sortByParam?: string,
+    sortOrderParam?: string
   ) => {
     if (!mailboxId) {
       console.warn('[InboxPage] loadEmails: skipped, no mailboxId');
       return;
     }
-    console.log('[InboxPage] loadEmails: loading', mailboxId, 'page', page);
+
+    // Determine sorting
+    let finalSortBy = sortByParam;
+    let finalSortOrder = sortOrderParam;
+
+    if (!finalSortBy || !finalSortOrder) {
+      const parts = sortMode.split('-');
+      finalSortBy = parts[0];
+      finalSortOrder = parts[1] || 'desc';
+    }
+
+    console.log('[InboxPage] loadEmails: loading', mailboxId, 'page', page, 'sort', finalSortBy, finalSortOrder);
     setEmailsLoading(true);
     try {
-      let data = await emailService.getEmails(mailboxId, page, perPage, unread, hasAttachments);
+      let data = await emailService.getEmails(
+        mailboxId, 
+        page, 
+        perPage, 
+        unread, 
+        hasAttachments,
+        finalSortBy,
+        finalSortOrder
+      );
       console.log('[InboxPage] loadEmails: raw response:', JSON.stringify(data).substring(0, 200));
       
       // Robust unwrapping: If data itself is an ApiResponse (success/data), unwrap it manually
@@ -189,7 +210,7 @@ export default function InboxPage() {
     } finally {
       setEmailsLoading(false);
     }
-  }, [pageSize]);
+  }, [pageSize, sortMode]);
 
   // Primary initialization: load mailboxes THEN load emails in sequence
   useEffect(() => {
@@ -219,11 +240,11 @@ export default function InboxPage() {
       return;
     }
     if (initialLoadDone && selectedMailbox) {
-      console.log('[InboxPage] selectedMailbox changed to', selectedMailbox, '- reloading emails');
+      console.log('[InboxPage] selectedMailbox/sort/filter changed to', selectedMailbox, '- reloading emails');
       loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMailbox, filters.unread, filters.hasAttachment]);
+  }, [selectedMailbox, filters.unread, filters.hasAttachment, sortMode, pageSize]);
 
   // Auto-generate embeddings periodically (every 2 minutes)
   useEffect(() => {

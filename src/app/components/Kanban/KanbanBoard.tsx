@@ -80,8 +80,7 @@ export default function KanbanBoard({
     setLoading(true);
     try {
       // map sortMode to backend params
-      const sortBy = sortMode.startsWith('date') ? 'date' : (sortMode === 'sender' ? 'sender' : 'date');
-      const sortOrder = sortMode === 'date-asc' ? 'asc' : 'desc';
+      const [sortBy, sortOrder] = sortMode.split('-');
 
       const [boardData, columnsData] = await Promise.all([
         kanbanService.getKanban({

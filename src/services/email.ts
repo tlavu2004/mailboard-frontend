@@ -15,7 +15,15 @@ export const emailService = {
   },
 
   // Get emails for a specific mailbox
-  getEmails: async (mailboxId: string, page: number = 1, perPage: number = 20, unread?: boolean, hasAttachments?: boolean): Promise<EmailListResponse> => {
+  getEmails: async (
+    mailboxId: string, 
+    page: number = 1, 
+    perPage: number = 20, 
+    unread?: boolean, 
+    hasAttachments?: boolean,
+    sortBy?: string,
+    sortOrder?: string
+  ): Promise<EmailListResponse> => {
     if (USE_MOCK_API) {
       return await mockEmailApi.getEmails(mailboxId, page, perPage) as unknown as EmailListResponse;
     }
@@ -25,7 +33,9 @@ export const emailService = {
         page, 
         perPage,
         unread: unread === undefined ? undefined : unread,
-        hasAttachments: hasAttachments === undefined ? undefined : hasAttachments
+        hasAttachments: hasAttachments === undefined ? undefined : hasAttachments,
+        sortBy,
+        sortOrder
       },
     });
     return response.data;
