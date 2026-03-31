@@ -4,24 +4,39 @@ import { Mailbox, Email, EmailListResponse } from '@/types/email';
 
 export const emailService = {
   // Get all mailboxes
-  getMailboxes: async (): Promise<Mailbox[]> => {
+  getMailboxes: async (): Promise<{ mailboxes: Mailbox[], accountId?: number }> => {
     if (USE_MOCK_API) {
       const mockData = await mockEmailApi.getMailboxes();
-      return mockData.mailboxes;
+      return { mailboxes: mockData.mailboxes };
     }
     
-    const response = await apiClient.get<{ mailboxes: Mailbox[] }>('/mailboxes');
-    return response.data.mailboxes;
+    const response = await apiClient.get<{ mailboxes: Mailbox[], accountId?: number }>('mailboxes');
+    return response.data;
   },
 
   // Get emails for a specific mailbox
-  getEmails: async (mailboxId: string, page: number = 1, perPage: number = 20): Promise<EmailListResponse> => {
+  getEmails: async (
+    mailboxId: string, 
+    page: number = 1, 
+    perPage: number = 20, 
+    unread?: boolean, 
+    hasAttachments?: boolean,
+    sortBy?: string,
+    sortOrder?: string
+  ): Promise<EmailListResponse> => {
     if (USE_MOCK_API) {
       return await mockEmailApi.getEmails(mailboxId, page, perPage) as unknown as EmailListResponse;
     }
     
-    const response = await apiClient.get<EmailListResponse>(`/mailboxes/${mailboxId}/emails`, {
-      params: { page, perPage },
+    const response = await apiClient.get<EmailListResponse>(`mailboxes/${mailboxId}/emails`, {
+      params: { 
+        page, 
+        perPage,
+        unread: unread === undefined ? undefined : unread,
+        hasAttachments: hasAttachments === undefined ? undefined : hasAttachments,
+        sortBy,
+        sortOrder
+      },
     });
     return response.data;
   },
@@ -32,7 +47,7 @@ export const emailService = {
       return await mockEmailApi.getEmailById(emailId) as unknown as Email;
     }
     
-    const response = await apiClient.get<Email>(`/emails/${emailId}`);
+    const response = await apiClient.get<Email>(`emails/${emailId}`);
     return response.data;
   },
 
@@ -44,7 +59,7 @@ export const emailService = {
       const filtered = all.emails.filter(e => e.subject.toLowerCase().includes(query.toLowerCase()));
       return { emails: filtered as unknown as Email[], nextPageToken: '', totalEstimate: filtered.length };
     }
-    const response = await apiClient.get<{ emails: Email[], nextPageToken: string, totalEstimate: number }>('/emails/search', { 
+    const response = await apiClient.get<{ emails: Email[], nextPageToken: string, totalEstimate: number }>('emails/search', { 
       params: { q: query, pageToken } 
     });
     return response.data;
@@ -82,14 +97,14 @@ export const emailService = {
         formData.append('attachments', file);
       });
       
-      await apiClient.post('/emails/send', formData, {
+      await apiClient.post('emails/send', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
     } else {
       // No attachments, use JSON
-      await apiClient.post('/emails/send', { 
+      await apiClient.post('emails/send', { 
         to, 
         cc, 
         bcc, 
@@ -106,7 +121,7 @@ export const emailService = {
       // Mock implementation
       return;
     }
-    await apiClient.post(`/emails/${originalEmailId}/reply`, { to, subject, body });
+    await apiClient.post(`emails/${originalEmailId}/reply`, { to, subject, body });
   },
 
   // Modify email labels (mark read/unread, star, delete)
@@ -115,7 +130,7 @@ export const emailService = {
       // Mock implementation
       return;
     }
-    await apiClient.post(`/emails/${emailId}/modify`, { addLabels, removeLabels });
+    await apiClient.post(`emails/${emailId}/modify`, { addLabels, removeLabels });
   },
 
   // Get attachment URL
@@ -159,5 +174,31 @@ export const emailService = {
     }
     // Gmail API: Add TRASH label
     await emailService.modifyEmail(emailId, ['TRASH'], []);
+  },
+
+  // Sync emails from Gmail
+  syncEmails: async (accountId?: number, folderName: string = 'INBOX', limit: number = 10, page: number = 0): Promise<void> => {
+    if (USE_MOCK_API) {
+      return;
+    }
+    await apiClient.post('emails/sync', null, {
+      params: { accountId, folderName, limit, page }
+    });
+  },
+
+  // Repair corrupted email bodies
+  repairEmails: async (): Promise<void> => {
+    if (USE_MOCK_API) {
+      return;
+    }
+    await apiClient.post('emails/repair');
+  },
+
+  // Force refresh a single email
+  refreshEmail: async (emailId: string): Promise<void> => {
+    if (USE_MOCK_API) {
+      return;
+    }
+    await apiClient.post(`emails/${emailId}/refresh`);
   },
 };

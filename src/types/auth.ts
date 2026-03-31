@@ -20,7 +20,7 @@ export interface SignupRequest {
 }
 
 export interface GoogleAuthRequest {
-  token: string;
+  code: string;
 }
 
 export interface AuthResponse {

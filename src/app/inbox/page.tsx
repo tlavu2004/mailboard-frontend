@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Layout, Menu, List, Card, Button, Badge, Typography, Space, Avatar, Spin, message, Empty, Modal, Pagination, Dropdown, Drawer } from 'antd';
 import EmailDetail from '@/app/components/EmailDetail';
 import ComposeModal from '@/components/ComposeModal';
 import {
   InboxOutlined,
   StarOutlined,
+  StarFilled,
   SendOutlined,
   FileOutlined,
   DeleteOutlined,
@@ -21,16 +22,19 @@ import {
   ExportOutlined,
   MenuOutlined,
   PieChartOutlined,
+  CloudSyncOutlined,
 } from '@ant-design/icons';
 import KanbanBoard from '@/app/components/Kanban/KanbanBoard';
 import SearchResults from '@/app/components/SearchResults';
 import SearchInput from '@/app/components/SearchInput';
+import FilterBar, { FilterState, SortMode } from '@/app/components/FilterBar';
 import { useAuth } from '@/contexts/AuthContext';
 import { emailService } from '@/services/email';
 import { searchService } from '@/services/searchService';
 import apiClient from '@/services/api';
-import { Mailbox, Email } from '@/types/email';
+import { Mailbox, Email, ApiResponse } from '@/types/email';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import { useEmailNotifications } from '@/hooks/useEmailNotifications';
 import './inbox.css';
 
 const { Header, Sider, Content } = Layout;
@@ -58,6 +62,11 @@ export default function InboxPage() {
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
   const [composeMode, setComposeMode] = useState<'compose' | 'reply' | 'forward'>('compose');
   const [replyToEmail, setReplyToEmail] = useState<Email | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
+  const [accountId, setAccountId] = useState<number | null>(null);
+  const [kanbanSettingsOpen, setKanbanSettingsOpen] = useState(false);
+  const [editingColumnId, setEditingColumnId] = useState<string | undefined>(undefined);
+  const [autoAddColumn, setAutoAddColumn] = useState(false);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -74,6 +83,14 @@ export default function InboxPage() {
   const [totalEstimate, setTotalEstimate] = useState<number>(0);
   const [searchScores, setSearchScores] = useState<Record<string, number>>({});
   const [searchMode, setSearchMode] = useState<'semantic' | 'text'>('semantic');
+  const [syncLoading, setSyncLoading] = useState(false);
+
+  // Filter & Sort state
+  const [filters, setFilters] = useState<FilterState>({
+    unread: false,
+    hasAttachment: false,
+  });
+  const [sortMode, setSortMode] = useState<SortMode>('date-desc');
 
   useEffect(() => {
     const savedView = localStorage.getItem('viewMode');
@@ -117,45 +134,125 @@ export default function InboxPage() {
     setIsComposeVisible(true);
   };
 
-  const loadMailboxes = useCallback(async () => {
+  const loadMailboxes = useCallback(async (): Promise<string | null> => {
     try {
+      console.log('[InboxPage] loadMailboxes: starting...');
       const data = await emailService.getMailboxes();
-      setMailboxes(data || []);
-      if (data && data.length > 0) {
-        const inbox = data.find(m => m.id === 'INBOX');
-        setSelectedMailbox(prev => prev || (inbox ? 'INBOX' : data[0].id));
+      console.log('[InboxPage] loadMailboxes: got', data.mailboxes?.length, 'mailboxes, accountId:', data.accountId);
+      setMailboxes(data.mailboxes || []);
+      if (data.accountId) {
+        setAccountId(data.accountId);
       }
+      if (data.mailboxes && data.mailboxes.length > 0) {
+        const inbox = data.mailboxes.find(m => m.id === 'INBOX');
+        const targetMailbox = inbox ? 'INBOX' : data.mailboxes[0].id;
+        setSelectedMailbox(prev => prev || targetMailbox);
+        return targetMailbox;
+      }
+      return null;
     } catch (error) {
+      console.error('[InboxPage] loadMailboxes: FAILED', error);
       message.error('Failed to load mailboxes');
-      console.error(error);
+      return null;
     }
   }, [setMailboxes, setSelectedMailbox]);
 
-  const loadEmails = useCallback(async (mailboxId: string, page: number = 1, perPage: number = pageSize) => {
+  const loadEmails = useCallback(async (
+    mailboxId: string, 
+    page: number = 1, 
+    perPage: number = pageSize,
+    unread?: boolean,
+    hasAttachments?: boolean,
+    sortByParam?: string,
+    sortOrderParam?: string
+  ) => {
+    if (!mailboxId) {
+      console.warn('[InboxPage] loadEmails: skipped, no mailboxId');
+      return;
+    }
+
+    // Determine sorting
+    let finalSortBy = sortByParam;
+    let finalSortOrder = sortOrderParam;
+
+    if (!finalSortBy || !finalSortOrder) {
+      const parts = sortMode.split('-');
+      finalSortBy = parts[0];
+      finalSortOrder = parts[1] || 'desc';
+    }
+
+    console.log('[InboxPage] loadEmails: loading', mailboxId, 'page', page, 'sort', finalSortBy, finalSortOrder);
     setEmailsLoading(true);
     try {
-      const data = await emailService.getEmails(mailboxId, page, perPage);
-      setEmails(data.emails || []);
+      let data = await emailService.getEmails(
+        mailboxId, 
+        page, 
+        perPage, 
+        unread, 
+        hasAttachments,
+        finalSortBy,
+        finalSortOrder
+      );
+      console.log('[InboxPage] loadEmails: raw response:', JSON.stringify(data).substring(0, 200));
+      
+      // Robust unwrapping: If data itself is an ApiResponse (success/data), unwrap it manually
+      if (data && (data as any).success !== undefined && (data as any).data !== undefined) {
+        console.log('[InboxPage] loadEmails: unwrapping nested ApiResponse');
+        data = (data as any).data;
+      }
+
+      const emailList = data.emails || [];
+      console.log('[InboxPage] loadEmails: found', emailList.length, 'emails, total:', data.total);
+      setEmails(emailList);
       setTotalEmails(data.total || 0);
       setCurrentPage(page);
       setSelectedEmail(null);
     } catch (error) {
+      console.error('[InboxPage] loadEmails: FAILED', error);
       message.error('Failed to load emails');
-      console.error(error);
     } finally {
       setEmailsLoading(false);
     }
-  }, [pageSize]);
+  }, [pageSize, sortMode]);
 
+  // Primary initialization: load mailboxes THEN load emails in sequence
   useEffect(() => {
-    loadMailboxes();
-  }, [loadMailboxes]);
+    let cancelled = false;
+    const init = async () => {
+      console.log('[InboxPage] init: starting mailbox + email load sequence');
+      const mailboxId = await loadMailboxes();
+      if (cancelled) return;
+      if (mailboxId) {
+        console.log('[InboxPage] init: mailboxes loaded, now loading emails for', mailboxId);
+        await loadEmails(mailboxId, 1, pageSize, filters.unread, filters.hasAttachment);
+      } else {
+        console.warn('[InboxPage] init: no mailbox returned, emails will not load');
+      }
+    };
+    init();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Auto-generate embeddings on first visit (once per session)
+  // When selectedMailbox changes AFTER initial load (e.g. user clicks sidebar), reload emails
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  useEffect(() => {
+    if (!initialLoadDone && selectedMailbox) {
+      // Mark initial load as done after first selectedMailbox is set
+      setInitialLoadDone(true);
+      return;
+    }
+    if (initialLoadDone && selectedMailbox) {
+      console.log('[InboxPage] selectedMailbox/sort/filter changed to', selectedMailbox, '- reloading emails');
+      loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMailbox, filters.unread, filters.hasAttachment, sortMode, pageSize]);
+
   // Auto-generate embeddings periodically (every 2 minutes)
   useEffect(() => {
     const generate = () => {
-      searchService.generateEmbeddings(50) // Process small batches frequentyl
+      searchService.generateEmbeddings(50)
         .then(result => {
           if (result.processed > 0) {
             console.log(`Auto-generated embeddings for ${result.processed} emails`);
@@ -163,29 +260,17 @@ export default function InboxPage() {
         })
         .catch(err => console.error('Auto-embedding failed:', err));
     };
-
-    // Initial call
     generate();
-
-    // Loop
-    const interval = setInterval(generate, 2 * 60 * 1000); // 2 minutes
+    const interval = setInterval(generate, 2 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
-
-
-
-  useEffect(() => {
-    if (selectedMailbox) {
-      loadEmails(selectedMailbox);
-    }
-  }, [selectedMailbox, loadEmails]);
 
   const handlePageChange = (page: number, size?: number) => {
     const newPageSize = size || pageSize;
     if (size && size !== pageSize) {
       setPageSize(size);
     }
-    loadEmails(selectedMailbox, page, newPageSize);
+    loadEmails(selectedMailbox, page, newPageSize, filters.unread, filters.hasAttachment);
   };
 
   const handleMailboxSelect = (mailboxId: string) => {
@@ -221,9 +306,51 @@ export default function InboxPage() {
   };
 
   const handleRefresh = () => {
-    loadEmails(selectedMailbox);
+    loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
     message.success('Refreshed');
   };
+
+  const handleSync = async () => {
+    setSyncLoading(true);
+    try {
+      await emailService.syncEmails();
+      message.success('Sync completed. Refreshing emails...');
+      await loadEmails(selectedMailbox);
+    } catch (error) {
+      console.error('Sync failed:', error);
+      message.error('Failed to sync emails from Gmail');
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
+  const handleRepair = async () => {
+    try {
+      message.loading({ content: 'Repairing email bodies...', key: 'repairing' });
+      await emailService.repairEmails();
+      message.success({ content: 'Repair completed. Refreshing...', key: 'repairing' });
+      loadEmails(selectedMailbox);
+    } catch (error) {
+      console.error('Repair failed:', error);
+      message.error({ content: 'Repair failed', key: 'repairing' });
+    }
+  };
+
+  // Handle real-time notifications
+  const handleNotification = useCallback((msg: { type: string; message: string }) => {
+    if (msg.type === 'NEW_EMAILS') {
+      message.info('New emails received! Syncing...');
+      
+      // Add a small delay (500ms) to ensure DB transaction is fully committed
+      // before we fetch the data in our current thread
+      setTimeout(() => {
+        loadMailboxes();
+        loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
+      }, 500);
+    }
+  }, [selectedMailbox, loadMailboxes, loadEmails, pageSize, filters]);
+
+  useEmailNotifications(accountId, handleNotification);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -253,12 +380,21 @@ export default function InboxPage() {
     const newStarred = !email.isStarred;
 
     // Optimistic update FIRST (instant UI feedback)
-    const updateEmails = (list: Email[]) => list.map(e =>
-      e.id === email.id ? { ...e, isStarred: newStarred } : e
-    );
+    const updateEmails = (list: Email[]) => {
+      if (selectedMailbox === 'STARRED' && !newStarred) {
+        return list.filter(e => e.id !== email.id);
+      }
+      return list.map(e =>
+        e.id === email.id ? { ...e, isStarred: newStarred } : e
+      );
+    };
     setEmails(updateEmails(emails));
     if (selectedEmail?.id === email.id) {
-      setSelectedEmail({ ...selectedEmail, isStarred: newStarred });
+      if (selectedMailbox === 'STARRED' && !newStarred) {
+        setSelectedEmail(null);
+      } else {
+        setSelectedEmail({ ...selectedEmail, isStarred: newStarred });
+      }
     }
     message.success(originalStarred ? 'Unstarred' : 'Starred');
 
@@ -341,6 +477,45 @@ export default function InboxPage() {
     }
   };
 
+  const handleSummarize = async (email: Email) => {
+    setLoadingSummary(true);
+    try {
+      const response = await apiClient.post<string>(`emails/${email.id}/summarize`);
+      const newSummary = response.data;
+      
+      if (!newSummary) {
+        throw new Error('Empty summary returned');
+      }
+      
+      // Update selected email
+      if (selectedEmail?.id === email.id) {
+        setSelectedEmail({ 
+          ...selectedEmail, 
+          summary: newSummary,
+          summarySource: newSummary.startsWith('[Gemini]') ? 'GEMINI' : 
+                         newSummary.startsWith('[Local Algo]') ? 'LOCAL_ALGO' : 
+                         newSummary.startsWith('[Local Model]') ? 'LOCAL_MODEL' : undefined
+        });
+      }
+
+      // Update emails list
+      setEmails(prev => prev.map(e => e.id === email.id ? { 
+        ...e, 
+        summary: newSummary,
+        summarySource: newSummary.startsWith('[Gemini]') ? 'GEMINI' : 
+                       newSummary.startsWith('[Local Algo]') ? 'LOCAL_ALGO' : 
+                       newSummary.startsWith('[Local Model]') ? 'LOCAL_MODEL' : undefined
+      } : e));
+
+      message.success('Summary generated successfully');
+    } catch (error) {
+      console.error('Summarization failed:', error);
+      message.error('Failed to generate AI summary');
+    } finally {
+      setLoadingSummary(false);
+    }
+  };
+
   const handleKanbanModalClose = () => {
     setSelectedEmail(null);
   };
@@ -350,18 +525,23 @@ export default function InboxPage() {
       // Optimistic UI: Open modal immediately with available data
       const partialEmail: Email = {
         id: card.id,
-        mailboxId: selectedMailbox || 'INBOX', // best guess
-        from: { name: card.sender, email: '' }, // We don't have email address in board card yet
+        messageId: card.messageId || '', // Ensure messageId is present
+        gmailMessageId: card.gmailMessageId,
+        threadId: card.threadId,
+        accountEmail: card.accountEmail,
+        mailboxId: selectedMailbox || 'INBOX', 
+        from: { name: card.sender, email: card.accountEmail || '' }, 
         to: [],
         subject: card.subject,
         preview: card.preview,
-        body: '', // Empty body signals need to fetch
-        isRead: true, // Optimistically read
-        isStarred: false, // Unknown
+        body: '', 
+        isRead: card.isRead,
+        isStarred: false, 
         hasAttachments: card.hasAttachments,
         receivedAt: card.receivedAt,
         createdAt: card.receivedAt,
-        summary: card.summary
+        summary: card.summary,
+        summarySource: undefined
       };
 
       setSelectedEmail(partialEmail);
@@ -554,6 +734,21 @@ export default function InboxPage() {
           </div>
         </Header>
 
+        <div className="px-4 pt-4 bg-white">
+          <FilterBar 
+            filters={filters}
+            sortMode={sortMode}
+            onFilterChange={setFilters}
+            onSortChange={setSortMode}
+            onSync={handleSync}
+            onRepair={handleRepair}
+            onRefresh={handleRefresh}
+            onSettings={viewMode === 'kanban' ? () => setKanbanSettingsOpen(true) : undefined}
+            syncLoading={syncLoading}
+            refreshLoading={emailsLoading}
+          />
+        </div>
+
         {isSearching ? (
           <Content style={{ flex: 1, overflow: 'hidden' }}>
             <SearchResults
@@ -594,6 +789,8 @@ export default function InboxPage() {
                     }}
                     onReply={handleReply}
                     onForward={handleForward}
+                    onSummarize={handleSummarize}
+                    loadingSummary={loadingSummary}
                     onDownloadAttachment={handleDownloadAttachment}
                     showMobileDetail={false}
                   />
@@ -603,7 +800,28 @@ export default function InboxPage() {
           </Content>
         ) : viewMode === 'kanban' ? (
           <Content style={{ flex: 1, overflow: 'hidden', background: '#fff' }}>
-            <KanbanBoard onCardClick={handleKanbanCardClick} />
+            <KanbanBoard 
+              onCardClick={handleKanbanCardClick} 
+              filters={filters}
+              sortMode={sortMode}
+              accountId={accountId}
+              settingsOpen={kanbanSettingsOpen}
+              onSettingsClose={() => {
+                setKanbanSettingsOpen(false);
+                setEditingColumnId(undefined);
+                setAutoAddColumn(false);
+              }}
+              onOpenSettingsWithColumn={(columnId) => {
+                setEditingColumnId(columnId);
+                setKanbanSettingsOpen(true);
+              }}
+              onAddColumnClick={() => {
+                setKanbanSettingsOpen(true);
+                setAutoAddColumn(true);
+              }}
+              initialSelectedColumnId={editingColumnId}
+              triggerAddOnOpen={autoAddColumn}
+            />
 
             {/* Modal for Kanban Detail View */}
             <Modal
@@ -628,6 +846,8 @@ export default function InboxPage() {
                     }}
                     onReply={handleReply}
                     onForward={handleForward}
+                    onSummarize={handleSummarize}
+                    loadingSummary={loadingSummary}
                     onDownloadAttachment={handleDownloadAttachment}
                     showMobileDetail={false}
                   />
@@ -796,10 +1016,13 @@ export default function InboxPage() {
                                 <div className="w-2 h-2 rounded-full bg-blue-600" style={{ marginRight: -4 }} />
                               )}
                               <Text strong={!email.isRead} style={{ fontSize: '14px', color: !email.isRead ? '#262626' : '#595959' }}>
-                                {email.from.name || email.from.email}
+                                {email?.from?.name || email?.from?.email || 'Unknown Sender'}
                               </Text>
-                              <div onClick={(e) => handleStar(e, email)}>
-                                {email.isStarred ? <StarOutlined style={{ color: '#faad14' }} /> : <StarOutlined style={{ color: '#d9d9d9' }} />}
+                              <div 
+                                onClick={(e) => handleStar(e, email)}
+                                style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+                              >
+                                {email.isStarred ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined style={{ color: '#d9d9d9' }} />}
                               </div>
                               {email.hasAttachments && <PaperClipOutlined />}
                             </Space>
@@ -846,7 +1069,7 @@ export default function InboxPage() {
             <Content
               style={{
                 background: '#fff',
-                padding: showMobileDetail ? '0' : '24px',
+                padding: showMobileDetail ? '0' : '80px 24px 24px 24px',
                 overflowY: 'auto',
                 height: '100%',
                 display: showMobileDetail ? 'block' : undefined,
@@ -856,138 +1079,31 @@ export default function InboxPage() {
               }}
               className={`email-detail-content ${!showMobileDetail ? 'hidden-mobile' : ''} [&::-webkit-scrollbar]:hidden`}
             >
-              {showMobileDetail && (
-                <Button
-                  icon={<ArrowLeftOutlined />}
-                  onClick={() => setShowMobileDetail(false)}
-                  style={{ margin: '16px' }}
-                  className="mobile-back-button"
-                >
-                  Back
-                </Button>
-              )}
-
-              {selectedEmail ? (
-                <div style={{ maxWidth: '900px', margin: '0 auto', padding: showMobileDetail ? '0 16px 16px' : '0' }}>
-                  <Space direction="vertical" size="large" style={{ width: '100%' }}>
-                    <div>
-                      <Title level={3}>{selectedEmail.subject}</Title>
-                      <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <Avatar style={{ backgroundColor: '#667eea' }}>
-                            {selectedEmail.from.name?.charAt(0) || selectedEmail.from.email.charAt(0).toUpperCase()}
-                          </Avatar>
-                          <div>
-                            <Text strong>{selectedEmail.from.name || selectedEmail.from.email}</Text>
-                            <br />
-                            <Text type="secondary" style={{ fontSize: '12px' }}>
-                              {selectedEmail.from.email}
-                            </Text>
-                          </div>
-                        </div>
-                        <div>
-                          <Text type="secondary">To: </Text>
-                          <Text>{selectedEmail.to.map(t => t.email).join(', ')}</Text>
-                        </div>
-                        {selectedEmail.cc && selectedEmail.cc.length > 0 && (
-                          <div>
-                            <Text type="secondary">Cc: </Text>
-                            <Text>{selectedEmail.cc.map(c => c.email).join(', ')}</Text>
-                          </div>
-                        )}
-                        <Text type="secondary" style={{ fontSize: '12px' }}>
-                          {new Date(selectedEmail.receivedAt).toLocaleString()}
-                        </Text>
-                      </Space>
-                    </div>
-
-                    <Space wrap>
-                      <Button type="primary" onClick={() => selectedEmail && handleReply(selectedEmail)}>
-                        Reply
-                      </Button>
-                      <Button onClick={() => selectedEmail && handleReply(selectedEmail)}>
-                        Reply All
-                      </Button>
-                      <Button onClick={() => selectedEmail && handleForward(selectedEmail)}>
-                        Forward
-                      </Button>
-                      <Button icon={<StarOutlined />} onClick={(e) => handleStar(e, selectedEmail)}>
-                        {selectedEmail.isStarred ? 'Unstar' : 'Star'}
-                      </Button>
-                      <Button icon={<DeleteOutlined />} danger onClick={(e) => handleDelete(e, selectedEmail)}>Delete</Button>
-                      <Button
-                        icon={<ExportOutlined />}
-                        onClick={() => {
-                          const messageRef = selectedEmail.threadId || selectedEmail.id;
-                          window.open(`https://mail.google.com/mail/u/0/#inbox/${messageRef}`, '_blank', 'noopener,noreferrer');
-                        }}
-                        title="Open in Gmail"
-                      >
-                        Open in Gmail
-                      </Button>
-                    </Space>
-
-                    {selectedEmail.attachments && selectedEmail.attachments.length > 0 && (
-                      <Card title="Attachments" size="small">
-                        <Space direction="vertical" style={{ width: '100%' }}>
-                          {selectedEmail.attachments.map((attachment) => (
-                            <div
-                              key={attachment.id}
-                              style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                padding: '8px',
-                                background: '#f6f8fa',
-                                borderRadius: '4px'
-                              }}
-                            >
-                              <Space>
-                                <PaperClipOutlined />
-                                <div>
-                                  <Text strong>{attachment.filename}</Text>
-                                  <br />
-                                  <Text type="secondary" style={{ fontSize: '12px' }}>
-                                    {formatFileSize(attachment.size)}
-                                  </Text>
-                                </div>
-                              </Space>
-                              <Button size="small" onClick={() => handleDownloadAttachment(selectedEmail.id, attachment.id, attachment.filename)}>Download</Button>
-                            </div>
-                          ))}
-                        </Space>
-                      </Card>
-                    )}
-
-                    <Card>
-                      <iframe
-                        srcDoc={selectedEmail.body}
-                        title="Email Content"
-                        style={{
-                          width: '100%',
-                          minHeight: '400px',
-                          border: 'none',
-                          overflow: 'hidden',
-                        }}
-                        sandbox="allow-same-origin"
-                        onLoad={(e) => {
-                          const iframe = e.target as HTMLIFrameElement;
-                          if (iframe.contentDocument) {
-                            const height = iframe.contentDocument.body.scrollHeight;
-                            iframe.style.height = `${Math.max(height + 20, 400)}px`;
-                          }
-                        }}
-                      />
-                    </Card>
-                  </Space>
-                </div>
-              ) : (
-                <Empty
-                  description="Select an email to view details"
-                  style={{ marginTop: '20%' }}
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                />
-              )}
+              <EmailDetail
+                email={selectedEmail}
+                onBack={() => setShowMobileDetail(false)}
+                onStar={handleStar}
+                onDelete={handleDelete}
+                onReply={handleReply}
+                onForward={handleForward}
+                onSummarize={handleSummarize}
+                loadingSummary={loadingSummary}
+                onRefresh={async (email) => {
+                  try {
+                    message.loading({ content: 'Refreshing email content...', key: 'refreshing-email' });
+                    await emailService.refreshEmail(email.id);
+                    const updated = await emailService.getEmailDetail(email.id);
+                    setSelectedEmail(updated);
+                    // Update the email in the list as well
+                    setEmails(prev => prev.map(e => e.id === email.id ? updated : e));
+                    message.success({ content: 'Email content refreshed!', key: 'refreshing-email' });
+                  } catch (error) {
+                    message.error({ content: 'Refresh failed', key: 'refreshing-email' });
+                  }
+                }}
+                onDownloadAttachment={handleDownloadAttachment}
+                showMobileDetail={showMobileDetail}
+              />
             </Content>
           </Layout>
         )}

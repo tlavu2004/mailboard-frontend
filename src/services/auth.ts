@@ -12,7 +12,7 @@ import {
 export const authService = {
   // Sign up with email and password
   signup: async (data: SignupRequest): Promise<AuthResponse> => {
-    const response = await apiClient.post<AuthResponse>('/auth/signup', data);
+    const response = await apiClient.post<AuthResponse>('auth/signup', data);
     
     // Store tokens
     setAccessToken(response.data.accessToken);
@@ -23,7 +23,7 @@ export const authService = {
 
   // Login with email and password
   login: async (data: LoginRequest): Promise<AuthResponse> => {
-    const response = await apiClient.post<AuthResponse>('/auth/login', data);
+    const response = await apiClient.post<AuthResponse>('auth/login', data);
     
     // Store tokens
     setAccessToken(response.data.accessToken);
@@ -34,7 +34,7 @@ export const authService = {
 
   // Login with Google
   googleAuth: async (data: GoogleAuthRequest): Promise<AuthResponse> => {
-    const response = await apiClient.post<AuthResponse>('/auth/google', data);
+    const response = await apiClient.post<AuthResponse>('auth/google', data);
     
     // Store tokens
     setAccessToken(response.data.accessToken);
@@ -45,7 +45,7 @@ export const authService = {
 
   // Refresh access token
   refreshToken: async (data: RefreshTokenRequest): Promise<RefreshTokenResponse> => {
-    const response = await apiClient.post<RefreshTokenResponse>('/auth/refresh', data);
+    const response = await apiClient.post<RefreshTokenResponse>('auth/refresh', data);
     
     // Update tokens
     setAccessToken(response.data.accessToken);
@@ -56,14 +56,14 @@ export const authService = {
 
   // Get current user
   getMe: async (): Promise<User> => {
-    const response = await apiClient.get<User>('/auth/me');
+    const response = await apiClient.get<User>('auth/me');
     return response.data;
   },
 
   // Logout
   logout: async (): Promise<void> => {
     try {
-      await apiClient.post('/auth/logout');
+      await apiClient.post('auth/logout');
     } finally {
       // Clear tokens regardless of API response
       clearApiTokens();

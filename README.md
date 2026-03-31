@@ -49,7 +49,8 @@ aiemailbox-fe/
 │   │   └── email.ts          # Email types
 │   └── utils/                # Utility functions
 ├── public/                   # Static assets
-├── .env.local                # Environment variables
+├── .env                      # Environment variables
+├── .env.prod                 # Production environment variables
 ├── package.json
 └── tsconfig.json
 ```
@@ -71,7 +72,7 @@ npm install
 
 ### 2. Configure Environment Variables
 
-Create `.env.local` file:
+Create `.env` file:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8080/api
@@ -84,7 +85,7 @@ NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-google-oauth-client-id
 3. Enable Google+ API
 4. Create OAuth 2.0 credentials
 5. Add authorized origins: `http://localhost:3000`
-6. Copy Client ID to `.env.local`
+6. Copy Client ID to `.env`
 
 ### 3. Run Development Server
 
@@ -383,7 +384,7 @@ vercel
 
 ### Issue: "Failed to load mailboxes"
 - **Solution:** Check backend is running on correct port
-- **Check:** API_URL in `.env.local` matches backend
+- **Check:** API_URL in `.env` matches backend
 
 ### Issue: Google Sign-In not working
 - **Solution:** Verify Google Client ID is correct

@@ -22,6 +22,8 @@ interface KanbanSettingsModalProps {
   open: boolean;
   onClose: () => void;
   onColumnsChanged: () => void;
+  initialSelectedColumnId?: string;
+  triggerAddOnOpen?: boolean;
 }
 
 // Sortable item wrapper with new design
@@ -69,7 +71,13 @@ const SortableColumnItem: React.FC<{
   );
 };
 
-const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose, onColumnsChanged }) => {
+const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ 
+  open, 
+  onClose, 
+  onColumnsChanged, 
+  initialSelectedColumnId,
+  triggerAddOnOpen
+}) => {
   const [columns, setColumns] = useState<KanbanColumn[]>([]);
   const [gmailLabels, setGmailLabels] = useState<GmailLabel[]>([]);
   const [loading, setLoading] = useState(false);
@@ -77,10 +85,16 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose
 
   // Edit state
   const [editingColumn, setEditingColumn] = useState<KanbanColumn | null>(null);
-  const [editForm, setEditForm] = useState({ label: '', gmailLabel: '', color: '' });
+  const [isCreating, setIsCreating] = useState(false);
+  const [editForm, setEditForm] = useState({ label: '', gmailLabel: '', color: '#f1f5f9' });
 
   // Mobile view state
   const [showEditPanel, setShowEditPanel] = useState(false);
+
+  // New Label Modal state
+  const [newLabelModalOpen, setNewLabelModalOpen] = useState(false);
+  const [newLabelName, setNewLabelName] = useState('');
+  const [creatingLabel, setCreatingLabel] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -104,8 +118,23 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose
       fetchData();
       setShowEditPanel(false);
       setEditingColumn(null);
+      
+      // NEW: Auto-trigger add if prompted from board
+      if (triggerAddOnOpen) {
+        handleAddColumn();
+      }
     }
-  }, [open]);
+  }, [open, triggerAddOnOpen]);
+
+  // Handle initial column selection when columns are loaded
+  useEffect(() => {
+    if (open && initialSelectedColumnId && columns.length > 0) {
+      const col = columns.find(c => c.id === initialSelectedColumnId);
+      if (col) {
+        startEdit(col);
+      }
+    }
+  }, [open, initialSelectedColumnId, columns]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -144,64 +173,64 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose
     }
   };
 
-  const handleAddColumn = async () => {
-    setSaving(true);
-    const tempId = `temp_${Date.now()}`;
-    const tempColumn = {
-      id: tempId,
-      key: `new_column_${Date.now()}`,
-      label: 'New Column',
-      gmailLabel: '',
-      color: '#64748b',
-      order: columns.length,
-      isDefault: false,
-      userId: ''
-    };
-    setColumns(prev => [...prev, tempColumn]);
-    startEdit(tempColumn);
-
-    try {
-      const newColumn = await kanbanService.createColumn({
-        label: 'New Column',
-        gmailLabel: '',
-        color: '#64748b',
-      });
-      setColumns(prev => prev.map(col => col.id === tempId ? newColumn : col).sort((a, b) => a.order - b.order));
-      setEditingColumn(newColumn);
-      setEditForm({ label: newColumn.label, gmailLabel: newColumn.gmailLabel || '', color: newColumn.color || '#64748b' });
-      onColumnsChanged();
-    } catch (error) {
-      console.error('Failed to create column:', error);
-      message.error('Failed to create column');
-      setColumns(prev => prev.filter(col => col.id !== tempId));
-      setEditingColumn(null);
-      setShowEditPanel(false);
-    } finally {
-      setSaving(false);
-    }
+  const handleAddColumn = () => {
+    // Stage 1: Just enter draft mode, do not sync with backend or modify list yet
+    setIsCreating(true);
+    setEditingColumn(null);
+    setEditForm({ 
+      label: 'New Column', 
+      gmailLabel: '', 
+      color: '#f1f5f9' 
+    });
+    setShowEditPanel(true);
   };
 
   const handleUpdateColumn = async () => {
-    if (!editingColumn) return;
     if (!editForm.label.trim()) {
       message.warning('Label is required');
       return;
     }
     setSaving(true);
     try {
-      const updated = await kanbanService.updateColumn(editingColumn.id, {
-        label: editForm.label,
-        gmailLabel: editForm.gmailLabel,
-        color: editForm.color,
-      });
-      message.success('Column updated');
-      setColumns(prev => prev.map(col => col.id === updated.id ? updated : col).sort((a, b) => a.order - b.order));
-      setEditingColumn(updated);
-      setEditForm({ label: updated.label, gmailLabel: updated.gmailLabel || '', color: updated.color || '' });
+      if (isCreating) {
+        // Create new column
+        const updatedColumns = await kanbanService.createColumn({
+          label: editForm.label,
+          gmailLabel: editForm.gmailLabel,
+          color: editForm.color,
+        });
+        message.success('Column created');
+        
+        const sorted = updatedColumns.sort((a, b) => a.order - b.order);
+        setColumns(sorted);
+        
+        // Find the newly created one to continue editing if desired
+        const newCol = sorted.find(c => c.label === editForm.label) || sorted[sorted.length - 1];
+        if (newCol) {
+          setEditingColumn(newCol);
+          setIsCreating(false);
+        }
+      } else if (editingColumn) {
+        // Update existing column
+        const updatedColumns = await kanbanService.updateColumn(editingColumn.id, {
+          label: editForm.label,
+          gmailLabel: editForm.gmailLabel,
+          color: editForm.color,
+        });
+        message.success('Column updated');
+        
+        const sorted = updatedColumns.sort((a, b) => a.order - b.order);
+        setColumns(sorted);
+        
+        const updatedCol = sorted.find(c => c.id === editingColumn.id);
+        if (updatedCol) {
+          setEditingColumn(updatedCol);
+        }
+      }
       onColumnsChanged();
     } catch (error) {
-      console.error('Failed to update column:', error);
-      message.error('Failed to update column');
+      console.error('Failed to save column:', error);
+      message.error('Failed to save column');
     } finally {
       setSaving(false);
     }
@@ -232,6 +261,7 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose
   };
 
   const startEdit = (col: KanbanColumn) => {
+    setIsCreating(false);
     setEditingColumn(col);
     setEditForm({ label: col.label, gmailLabel: col.gmailLabel || '', color: col.color || '#64748b' });
     setShowEditPanel(true);
@@ -300,20 +330,36 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose
               </button>
             </div>
             
-            <div className="p-4 md:p-6">
-              <button 
-                onClick={onClose}
-                className="w-full py-2.5 md:py-3 bg-gray-900 text-white text-xs font-semibold rounded-lg md:rounded-xl hover:bg-gray-800 transition-all"
-              >
-                Close Settings
-              </button>
+            <div className="p-4 md:p-6 bg-white border-t border-gray-100">
+              <Tooltip title={(!editingColumn || isCreating) ? "Select a column to delete" : (editingColumn.isDefault ? "Safety: Default columns cannot be deleted" : "")}>
+                <button 
+                  onClick={handleDeleteColumn}
+                  disabled={!editingColumn || isCreating || editingColumn.isDefault}
+                  className={`w-full py-3 md:py-3.5 text-sm font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all border ${
+                    (!editingColumn || isCreating || editingColumn.isDefault)
+                      ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed'
+                      : 'bg-red-50 text-red-600 border-red-100 hover:bg-red-600 hover:text-white hover:border-red-600'
+                  }`}
+                >
+                  <Trash2 size={16} /> Delete Column
+                </button>
+              </Tooltip>
             </div>
           </div>
 
           {/* Right side: Editing Panel - Full width on mobile when editing */}
-          <div className={`${showEditPanel ? 'flex' : 'hidden md:flex'} flex-1 flex-col bg-white`}>
-            {editingColumn ? (
-              <div className="flex-1 flex flex-col p-6 md:p-12 overflow-y-auto">
+          <div className={`${showEditPanel ? 'flex' : 'hidden md:flex'} flex-1 flex-col bg-white overflow-hidden relative`}>
+            {/* Permanent Close Button (X) */}
+            <button 
+              onClick={onClose}
+              className="absolute top-4 right-4 z-10 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all"
+              title="Close Settings"
+            >
+              <Plus size={24} className="rotate-45" />
+            </button>
+
+            {editingColumn || isCreating ? (
+              <div className="flex-1 flex flex-col p-6 md:p-12">
                 {/* Mobile back button */}
                 <button 
                   onClick={handleBackToList}
@@ -321,21 +367,16 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose
                 >
                   <ChevronRight size={16} className="rotate-180" /> Back to list
                 </button>
-
-                <div className="flex flex-col md:flex-row justify-between items-start gap-4 mb-8 md:mb-10">
+ 
+                <div className="flex flex-col md:flex-row justify-between items-start gap-4 mb-8 md:mb-10 pr-8">
                   <div>
-                    <span className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1 block">Editing</span>
-                    <h3 className="text-2xl md:text-3xl font-bold text-gray-800">{editingColumn.label}</h3>
+                    <span className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1 block">
+                      {isCreating ? 'New Column' : 'Editing'}
+                    </span>
+                    <h3 className="text-2xl md:text-3xl font-bold text-gray-800">
+                      {isCreating ? 'New Column' : editingColumn?.label}
+                    </h3>
                   </div>
-                  <Tooltip title={editingColumn.isDefault ? "Cannot delete default columns" : ""}>
-                    <button 
-                      onClick={handleDeleteColumn}
-                      disabled={editingColumn.isDefault}
-                      className="flex items-center gap-2 px-3 md:px-4 py-2 bg-red-50 text-red-500 rounded-lg text-xs font-medium hover:bg-red-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Trash2 size={14} /> Delete Column
-                    </button>
-                  </Tooltip>
                 </div>
 
                 <div className="space-y-6 md:space-y-8">
@@ -361,11 +402,21 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose
                       size="large"
                       placeholder="Select Gmail Label (optional)"
                       value={editForm.gmailLabel || undefined}
-                      onChange={val => setEditForm(prev => ({ ...prev, gmailLabel: val || '' }))}
+                      onChange={(val) => {
+                        setEditForm(prev => ({ ...prev, gmailLabel: val || '' }));
+                        if (val === '__CREATE_NEW__') {
+                          setNewLabelName('');
+                          setNewLabelModalOpen(true);
+                        }
+                      }}
                       allowClear
                       className="w-full"
                       status={getDuplicateLabelWarning(editForm.gmailLabel, editingColumn?.id) ? 'warning' : undefined}
-                      options={gmailLabels.map(l => ({ value: l.id, label: `${l.name} (${l.type})` }))}
+                      options={[
+                        { value: '', label: '🚫 No Label Mapping' },
+                        ...gmailLabels.map(l => ({ value: l.id, label: `${l.name} (${l.type})` })),
+                        { value: '__CREATE_NEW__', label: '➕ Create new Gmail label...' },
+                      ]}
                     />
                     {getDuplicateLabelWarning(editForm.gmailLabel, editingColumn?.id) && (
                       <div className="text-amber-600 text-xs mt-1 bg-amber-50 p-2 rounded-lg">
@@ -397,7 +448,8 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose
                       disabled={saving}
                       className="flex items-center gap-2 px-6 md:px-8 py-2.5 md:py-3 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-all shadow-sm disabled:opacity-50"
                     >
-                      <Save size={14} /> {saving ? 'Saving...' : 'Save Changes'}
+                      {saving ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> : <Save size={14} />} 
+                      {saving ? 'Creating...' : (isCreating ? 'Create Column' : 'Save Changes')}
                     </button>
                   </div>
                 </div>
@@ -415,6 +467,87 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose
           </div>
         </div>
       )}
+
+      {/* Sub-modal for creating a new Gmail label */}
+      <Modal
+        title={
+          <div className="flex items-center gap-2">
+            <Tag size={18} className="text-blue-500" />
+            <span>Create New Gmail Label</span>
+          </div>
+        }
+        open={newLabelModalOpen}
+        onCancel={() => {
+          if (!creatingLabel) {
+            setNewLabelModalOpen(false);
+            // Revert the selection in the main dropdown if they cancelled
+            setEditForm(prev => ({ 
+              ...prev, 
+              gmailLabel: editingColumn?.gmailLabel || '' 
+            }));
+          }
+        }}
+        onOk={async () => {
+          if (!newLabelName.trim()) {
+            message.warning('Please enter a label name');
+            return;
+          }
+          setCreatingLabel(true);
+          try {
+            const newLabel = await kanbanService.createGmailLabel(newLabelName.trim());
+            setGmailLabels(prev => [...prev, newLabel]);
+            setEditForm(prev => ({ ...prev, gmailLabel: newLabel.id }));
+            message.success(`Gmail label "${newLabelName}" created!`);
+            setNewLabelModalOpen(false);
+          } catch (err) {
+            message.error('Failed to create Gmail label');
+            console.error(err);
+          } finally {
+            setCreatingLabel(false);
+          }
+        }}
+        okText={creatingLabel ? 'Creating...' : 'Create Label'}
+        confirmLoading={creatingLabel}
+        destroyOnClose
+        centered
+        width={400}
+        styles={{
+          content: { borderRadius: '12px' }
+        }}
+      >
+        <div className="py-4">
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 block">
+            Label Name
+          </label>
+          <Input 
+            autoFocus
+            placeholder="e.g. Finance, Projects" 
+            value={newLabelName}
+            onChange={e => setNewLabelName(e.target.value)}
+            onPressEnter={async () => {
+              // Trigger OK logic manually for convenience
+              if (newLabelName.trim()) {
+                setCreatingLabel(true);
+                try {
+                  const newLabel = await kanbanService.createGmailLabel(newLabelName.trim());
+                  setGmailLabels(prev => [...prev, newLabel]);
+                  setEditForm(prev => ({ ...prev, gmailLabel: newLabel.id }));
+                  message.success(`Gmail label "${newLabelName}" created!`);
+                  setNewLabelModalOpen(false);
+                } catch (err) {
+                  message.error('Failed to create Gmail label');
+                  console.error(err);
+                } finally {
+                  setCreatingLabel(false);
+                }
+              }
+            }}
+          />
+          <p className="text-[11px] text-gray-400 mt-2">
+            This label will be created in your actual Gmail account and can be used to synchronize emails.
+          </p>
+        </div>
+      </Modal>
     </Modal>
   );
 };

@@ -18,8 +18,11 @@ export interface Suggestion {
   type: 'sender' | 'keyword' | 'subject';
 }
 
-export interface SuggestionsResponse {
-  suggestions: Suggestion[];
+// Interface for the data part of the response (already unwrapped by api.ts)
+interface RawSemanticSearchResponse {
+    results: any[];
+    query: string;
+    total: number;
 }
 
 // Transform backend response to frontend Email type
@@ -51,8 +54,9 @@ export const searchService = {
    * Perform semantic/vector-based search
    */
   semanticSearch: async (query: string, limit: number = 10): Promise<SemanticSearchResponse> => {
-    const response = await apiClient.post<any>('/search/semantic', { query, limit });
+    const response = await apiClient.post<RawSemanticSearchResponse>('search/semantic', { query, limit });
     
+    // response.data is now RawSemanticSearchResponse due to interceptor
     const results = (response.data.results || []).map((r: any) => ({
       email: transformEmail(r.email),
       score: r.score,
@@ -73,18 +77,18 @@ export const searchService = {
       return [];
     }
     
-    const response = await apiClient.get<SuggestionsResponse>('/search/suggestions', {
+    const response = await apiClient.get<Suggestion[]>('search/suggestions', {
       params: { q: query },
     });
     
-    return response.data.suggestions || [];
+    return response.data || [];
   },
 
   /**
    * Trigger embedding generation for user's emails (admin/utility)
    */
   generateEmbeddings: async (limit: number = 50): Promise<{ processed: number; failed: number }> => {
-    const response = await apiClient.post<{ processed: number; failed: number }>('/search/generate-embeddings', { limit });
+    const response = await apiClient.post<{ processed: number; failed: number }>('search/generate-embeddings', { limit });
     return response.data;
   },
 };

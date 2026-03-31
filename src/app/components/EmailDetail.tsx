@@ -3,9 +3,12 @@ import { Button, Typography, Space, Avatar, Card, Empty, Spin } from 'antd';
 import {
   ArrowLeftOutlined,
   StarOutlined,
+  StarFilled,
   DeleteOutlined,
   PaperClipOutlined,
   ExportOutlined,
+  ReloadOutlined,
+  RobotOutlined,
 } from '@ant-design/icons';
 import { Email } from '@/types/email';
 
@@ -18,6 +21,9 @@ interface EmailDetailProps {
   onDelete: (e: React.MouseEvent, email: Email) => void;
   onReply?: (email: Email) => void;
   onForward?: (email: Email) => void;
+  onRefresh?: (email: Email) => void;
+  onSummarize?: (email: Email) => void;
+  loadingSummary?: boolean;
   onDownloadAttachment: (emailId: string, attachmentId: string, filename: string) => void;
   showMobileDetail: boolean;
   className?: string;
@@ -31,6 +37,9 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
   onDelete,
   onReply,
   onForward,
+  onRefresh,
+  onSummarize,
+  loadingSummary,
   onDownloadAttachment,
   showMobileDetail,
   className,
@@ -44,9 +53,20 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
 
   // Generate Gmail URL for opening email in Gmail
   const getGmailUrl = (email: Email) => {
-    // Use threadId if available for better thread context, otherwise use email id
-    const messageRef = email.threadId || email.id;
-    return `https://mail.google.com/mail/u/0/#inbox/${messageRef}`;
+    // If we have a direct gmailLink from backend, use it
+    // But replace /u/0/ with /u/accountEmail/ if available to handle multi-account login
+    let url = email.gmailLink;
+    
+    if (!url) {
+      const msgId: string = email.messageId || email.id || '';
+      url = `https://mail.google.com/mail/u/0/#search/rfc822msgid:${encodeURIComponent(msgId)}`;
+    }
+
+    if (email.accountEmail && url.includes('/u/0/')) {
+      return url.replace('/u/0/', `/u/${encodeURIComponent(email.accountEmail)}/`);
+    }
+    
+    return url;
   };
 
   const handleOpenInGmail = () => {
@@ -81,7 +101,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: showMobileDetail ? '0 16px 16px' : '0' }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <div>
-            <Title level={3}>{email.subject}</Title>
+            <Title level={3} style={{ marginTop: '20px', marginBottom: '24px' }}>{email.subject}</Title>
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <Avatar style={{ backgroundColor: '#667eea' }}>
@@ -121,9 +141,13 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             <Button onClick={() => onForward && onForward(email)}>
               Forward
             </Button>
-            <Button icon={<StarOutlined />} onClick={(e) => onStar(e, email)}>
+            <Button 
+              icon={email.isStarred ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined />} 
+              onClick={(e) => onStar(e, email)}
+            >
               {email.isStarred ? 'Unstar' : 'Star'}
             </Button>
+
             <Button icon={<DeleteOutlined />} danger onClick={(e) => onDelete(e, email)}>
               Delete
             </Button>
@@ -133,6 +157,15 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
               title="Open in Gmail"
             >
               Open in Gmail
+            </Button>
+            <Button 
+              icon={<RobotOutlined />} 
+              onClick={() => onSummarize && onSummarize(email)}
+              loading={loadingSummary}
+              disabled={email.summarySource === 'GEMINI'}
+              title={email.summarySource === 'GEMINI' ? "Already summarized by Gemini" : "Generate AI Summary"}
+            >
+              AI Summary
             </Button>
           </Space>
 
@@ -175,6 +208,27 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             </Card>
           )}
 
+          {(email.summary || loadingSummary) && (
+            <Card 
+              size="small" 
+              title={<Space><RobotOutlined /> <Text strong>AI Summary</Text></Space>}
+              style={{ 
+                borderLeft: email.summarySource === 'GEMINI' ? '4px solid #48bb78' : '4px solid #667eea',
+                background: '#fcfdff'
+              }}
+            >
+              {loadingSummary ? (
+                <div style={{ textAlign: 'center', padding: '10px' }}>
+                  <Spin size="small" tip="Generative AI at work..." />
+                </div>
+              ) : (
+                <Text style={{ fontStyle: 'italic', color: '#4a5568' }}>
+                  {email.summary}
+                </Text>
+              )}
+            </Card>
+          )}
+
           <Card>
             {!email.body ? (
                 <div style={{ textAlign: 'center', padding: '20px' }}>
@@ -190,7 +244,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                     border: 'none',
                     overflow: 'hidden',
                   }}
-                  sandbox="allow-same-origin"
+                  sandbox="allow-same-origin allow-scripts"
                   onLoad={(e) => {
                     // Auto-resize iframe to content height
                     const iframe = e.target as HTMLIFrameElement;

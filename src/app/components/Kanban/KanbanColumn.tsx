@@ -1,6 +1,7 @@
 import React from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import KanbanCard from './KanbanCard';
 import { KanbanCardType } from '@/services/kanbanService';
 import { 
@@ -9,7 +10,8 @@ import {
   CheckSquareFilled,
   ClockCircleOutlined,
   ProjectOutlined,
-  TagOutlined
+  TagOutlined,
+  HolderOutlined
 } from '@ant-design/icons';
 import { Empty } from 'antd';
 
@@ -24,48 +26,81 @@ interface KanbanColumnProps {
 
 const getColumnConfig = (id: string, label: string) => {
   const lowerId = id.toLowerCase();
+  const lowerLabel = (label || '').toLowerCase();
   
-  if (lowerId.includes('inbox') || label.toLowerCase().includes('inbox')) {
-     return { bg: 'bg-blue-50', icon: <InboxOutlined />, iconColor: 'text-blue-500', badgeColor: 'bg-blue-200 text-blue-700' };
+  if (lowerId.includes('inbox') || lowerLabel.includes('inbox')) {
+     return { bg: 'bg-white', icon: <InboxOutlined />, iconColor: 'text-blue-500', badgeColor: 'bg-blue-50 text-blue-600' };
   }
-  if (lowerId.includes('todo') || lowerId.includes('to do')) {
-     return { bg: 'bg-orange-50', icon: <ThunderboltFilled />, iconColor: 'text-orange-500', badgeColor: 'bg-orange-200 text-orange-700' };
+  if (lowerId.includes('todo') || lowerId.includes('to do') || lowerId.includes('chưa xử lý')) {
+     return { bg: 'bg-white', icon: <ThunderboltFilled />, iconColor: 'text-orange-500', badgeColor: 'bg-orange-50 text-orange-600' };
   }
-  if (lowerId.includes('process')) {
-     return { bg: 'bg-purple-50', icon: <ProjectOutlined />, iconColor: 'text-purple-500', badgeColor: 'bg-purple-200 text-purple-700' };
+  if (lowerId.includes('process') || lowerLabel.includes('process') || lowerLabel.includes('đang')) {
+     return { bg: 'bg-white', icon: <ProjectOutlined />, iconColor: 'text-purple-500', badgeColor: 'bg-purple-50 text-purple-600' };
   }
-  if (lowerId.includes('snoozed')) {
-     return { bg: 'bg-indigo-50', icon: <ClockCircleOutlined />, iconColor: 'text-indigo-400', badgeColor: 'bg-indigo-200 text-indigo-700' };
+  if (lowerId.includes('snoozed') || lowerLabel.includes('tạm hoãn')) {
+     return { bg: 'bg-white', icon: <ClockCircleOutlined />, iconColor: 'text-indigo-400', badgeColor: 'bg-indigo-50 text-indigo-600' };
   }
-  if (lowerId.includes('done')) {
-     return { bg: 'bg-green-50', icon: <CheckSquareFilled />, iconColor: 'text-green-500', badgeColor: 'bg-green-200 text-green-700' };
+  if (lowerId.includes('done') || lowerLabel.includes('xong')) {
+     return { bg: 'bg-white', icon: <CheckSquareFilled />, iconColor: 'text-green-500', badgeColor: 'bg-green-50 text-green-600' };
   }
 
   // Default for custom columns
-  return { bg: 'bg-gray-50', icon: <TagOutlined />, iconColor: 'text-gray-500', badgeColor: 'bg-gray-200 text-gray-700' };
+  return { bg: 'bg-white', icon: <TagOutlined />, iconColor: 'text-gray-500', badgeColor: 'bg-gray-100 text-gray-600' };
 }
 
-// ... imports remain the same
-
-export default React.memo(KanbanColumn);
-
 function KanbanColumn({ id, label, color, cards, onRefresh, onCardClick }: KanbanColumnProps) {
-  const { setNodeRef } = useDroppable({ id });
+  const { 
+    attributes, 
+    listeners, 
+    setNodeRef: setSortableRef, 
+    transform, 
+    transition,
+    isDragging 
+  } = useSortable({ id });
+
+  const { setNodeRef: setDroppableRef } = useDroppable({ id });
+
   const config = getColumnConfig(id, label);
   
-  // Use custom color if provided, otherwise use default
+  const sortableStyle = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : 1,
+  };
+
   const bgStyle = color ? { backgroundColor: color } : undefined;
   const bgClass = color ? '' : config.bg;
 
   return (
-    <div className={`flex h-full w-[320px] shrink-0 flex-col rounded-xl px-2 py-3 ${bgClass}`} style={bgStyle}>
+    <div 
+      ref={setSortableRef}
+      style={sortableStyle}
+      className={`relative flex h-full w-[380px] shrink-0 flex-col rounded-2xl px-4 py-5 border border-gray-100 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.08)] transition-all ${bgClass} ${isDragging ? 'rotate-1 border-blue-200' : ''}`} 
+    >
+      <div 
+        style={bgStyle} 
+        className={`absolute inset-0 rounded-2xl -z-10 ${bgClass}`} 
+      />
+
+      {/* Top Accent Border */}
+      <div className={`absolute top-0 left-0 right-0 h-1 rounded-t-2xl ${config.iconColor.replace('text', 'bg')}`} />
+      
       {/* Header */}
       <div className="mb-4 flex items-center justify-between px-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 group">
+            {/* Drag Handle */}
+            <div 
+              {...attributes} 
+              {...listeners} 
+              className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 transition-colors p-1 -ml-2"
+            >
+              <HolderOutlined />
+            </div>
             <span className={`text-xl ${config.iconColor}`}>
                {config.icon}
             </span>
-            <h3 className="text-lg font-bold text-gray-700 m-0">{label}</h3>
+            <h3 className="text-lg font-bold text-gray-700 m-0 cursor-default">{label}</h3>
         </div>
         <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${config.badgeColor}`}>
             {cards.length}
@@ -74,7 +109,7 @@ function KanbanColumn({ id, label, color, cards, onRefresh, onCardClick }: Kanba
       
       {/* Droppable Area */}
       <div
-        ref={setNodeRef}
+        ref={setDroppableRef}
         className="flex-1 overflow-y-auto"
       >
         <SortableContext items={cards.map(c => c.id)} strategy={verticalListSortingStrategy}>
@@ -95,3 +130,5 @@ function KanbanColumn({ id, label, color, cards, onRefresh, onCardClick }: Kanba
     </div>
   );
 }
+
+export default React.memo(KanbanColumn);

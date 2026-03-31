@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { message } from 'antd';
 import {
   DndContext,
   closestCenter,
@@ -11,32 +12,68 @@ import {
   DragStartEvent,
 } from '@dnd-kit/core';
 import {
+  SortableContext,
   sortableKeyboardCoordinates,
+  horizontalListSortingStrategy,
+  arrayMove
 } from '@dnd-kit/sortable';
 import {
   ReloadOutlined,
-  SettingOutlined
+  SettingOutlined,
+  CloudSyncOutlined
 } from '@ant-design/icons';
-import { KanbanCardType, ColMeta, kanbanService } from '@/services/kanbanService';
-import KanbanColumn from './KanbanColumn';
+import { KanbanCardType, ColMeta, kanbanService, KanbanColumn } from '@/services/kanbanService';
+import { emailService } from '@/services/email';
+import KanbanColumnComponent from './KanbanColumn';
 import KanbanCard from './KanbanCard';
 import KanbanSettingsModal from './KanbanSettingsModal';
+import AddColumnButton from '../AddColumnButton';
 
-export default function KanbanBoard({ onCardClick }: { onCardClick: (card: KanbanCardType) => void }) {
+import { useEmailNotifications } from '@/hooks/useEmailNotifications';
+import { FilterState, SortMode } from '../FilterBar';
+
+export interface ColumnWithMeta extends ColMeta {
+  id: string; // Database ID for sortable items
+}
+
+export default function KanbanBoard({ 
+  onCardClick,
+  filters,
+  sortMode,
+  accountId,
+  settingsOpen,
+  onSettingsClose,
+  onOpenSettingsWithColumn,
+  onAddColumnClick,
+  initialSelectedColumnId,
+  triggerAddOnOpen,
+}: { 
+  onCardClick: (card: KanbanCardType) => void,
+  filters: FilterState,
+  sortMode: SortMode,
+  accountId: number | string | null,
+  settingsOpen: boolean,
+  onSettingsClose: () => void,
+  onOpenSettingsWithColumn?: (columnId: string) => void,
+  onAddColumnClick?: () => void,
+  initialSelectedColumnId?: string,
+  triggerAddOnOpen?: boolean,
+}) {
   const [columns, setColumns] = useState<Record<string, KanbanCardType[]>>({});
-  const [meta, setMeta] = useState<ColMeta[]>([]);
+  const [meta, setMeta] = useState<ColumnWithMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [syncLoading, setSyncLoading] = useState(false);
 
   // Fetch only column metadata (lighter than full board)
   const fetchColumnsMeta = useCallback(async () => {
     try {
       const columnsData = await kanbanService.getColumns();
-      const incomingMeta: ColMeta[] = columnsData
+      const incomingMeta: ColumnWithMeta[] = columnsData
         .sort((a, b) => a.order - b.order)
         .map(col => ({
+          id: col.id,
           key: col.key,
           label: col.label,
           color: col.color
@@ -47,12 +84,6 @@ export default function KanbanBoard({ onCardClick }: { onCardClick: (card: Kanba
     }
   }, []);
 
-  // Sorting & Filtering
-  const [sortMode, setSortMode] = useState<'date-desc' | 'date-asc' | 'sender'>('date-desc');
-  const [filters, setFilters] = useState({
-    unread: false,
-    hasAttachment: false
-  });
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -69,8 +100,7 @@ export default function KanbanBoard({ onCardClick }: { onCardClick: (card: Kanba
     setLoading(true);
     try {
       // map sortMode to backend params
-      const sortBy = sortMode.startsWith('date') ? 'date' : (sortMode === 'sender' ? 'sender' : 'date');
-      const sortOrder = sortMode === 'date-asc' ? 'asc' : 'desc';
+      const [sortBy, sortOrder] = sortMode.split('-');
 
       const [boardData, columnsData] = await Promise.all([
         kanbanService.getKanban({
@@ -84,9 +114,10 @@ export default function KanbanBoard({ onCardClick }: { onCardClick: (card: Kanba
 
       // Map KanbanColumn[] to ColMeta[]
       // Sort by order to ensure correct display order
-      const incomingMeta: ColMeta[] = columnsData
+      const incomingMeta: ColumnWithMeta[] = columnsData
         .sort((a, b) => a.order - b.order)
         .map(col => ({
+          id: col.id,
           key: col.key,
           label: col.label,
           color: col.color
@@ -119,6 +150,30 @@ export default function KanbanBoard({ onCardClick }: { onCardClick: (card: Kanba
     fetchBoard();
   }, [fetchBoard]);
 
+  // Handle real-time notifications
+  const handleNotification = useCallback((msg: { type: string; message: string }) => {
+    if (msg.type === 'NEW_EMAILS') {
+      message.info('New emails received! Updating Kanban...');
+      fetchBoard();
+    }
+  }, [fetchBoard]);
+
+  useEmailNotifications(accountId, handleNotification);
+
+  const handleSync = async () => {
+    setSyncLoading(true);
+    try {
+      await emailService.syncEmails();
+      message.success('Sync completed. Refreshing board...');
+      await fetchBoard();
+    } catch (err) {
+      console.error('Sync failed:', err);
+      message.error('Failed to sync emails from Gmail');
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
   const findContainer = (id: string, cols: Record<string, KanbanCardType[]>) => {
     if (id in cols) {
       return id;
@@ -139,55 +194,102 @@ export default function KanbanBoard({ onCardClick }: { onCardClick: (card: Kanba
 
     const overId = over.id as string;
 
-    // Find source and destination containers
-    // Note: over.id could be a container (column key) or an item ID
-    // We treating column IDs as container IDs by direct match, or finding container if it's an item
+    // Check if we are dragging a COLUMN or a CARD
+    const isActiveColumn = meta.some(m => m.id === activeIdVal);
+    const isOverColumn = meta.some(m => m.id === overId);
+
+    if (isActiveColumn) {
+      if (activeIdVal === overId) return;
+
+      const oldIndex = meta.findIndex(m => m.id === activeIdVal);
+      const newIndex = meta.findIndex(m => m.id === overId);
+      
+      const newMetaOrder = arrayMove(meta, oldIndex, newIndex);
+      setMeta(newMetaOrder);
+
+      try {
+        await kanbanService.reorderColumns(newMetaOrder.map(m => m.id));
+        message.success('Columns reordered');
+      } catch (error) {
+        console.error('Failed to reorder columns:', error);
+        message.error('Failed to save column order');
+        fetchColumnsMeta();
+      }
+      return;
+    }
+
+    // Original Card Drag logic
     const activeContainer = findContainer(activeIdVal, columns);
     const overContainer = findContainer(overId, columns);
 
     if (!activeContainer || !overContainer) return;
 
-    if (activeContainer !== overContainer) {
-      // Moved to different column
-      const activeItems = columns[activeContainer];
+    if (activeContainer === overContainer && active.id === over.id) return;
 
-      const activeItem = activeItems.find(c => c.id === activeIdVal);
-      if (!activeItem) return;
+    // 1. Calculate new position and order
+    const sourceList = [...columns[activeContainer]];
+    const destList = activeContainer === overContainer ? sourceList : [...columns[overContainer]];
+    
+    const activeIndex = sourceList.findIndex(c => c.id === activeIdVal);
+    const overIndex = destList.findIndex(c => c.id === overId);
+    
+    let newIndex = overIndex === -1 ? 0 : overIndex;
+    
+    const [movedItem] = sourceList.splice(activeIndex, 1);
+    destList.splice(newIndex, 0, movedItem);
 
-      // Optimistic Update
-      setColumns((prev) => {
-        const sourceList = [...prev[activeContainer]];
-        const destList = [...(prev[overContainer] || [])];
+    const prevItem = destList[newIndex - 1]; 
+    const nextItem = destList[newIndex + 1]; 
+    
+    let newOrder: number;
+    const GAP = 1000; 
 
-        const itemIndex = sourceList.findIndex(c => c.id === activeIdVal);
-        const [movedItem] = sourceList.splice(itemIndex, 1);
+    if (!prevItem && !nextItem) {
+      newOrder = Date.now(); 
+    } else if (!prevItem) {
+      newOrder = (nextItem.kanbanOrder || 0) + GAP;
+    } else if (!nextItem) {
+      newOrder = (prevItem.kanbanOrder || 0) - GAP;
+    } else {
+      newOrder = ((prevItem.kanbanOrder || 0) + (nextItem.kanbanOrder || 0)) / 2;
+    }
 
-        // If dropping on a card, insert before/after? For now just append or simplistic logic
-        // But better is to just append if dropping on column, or rely on sorting strategy if full reorder implemented.
-        // For simplicity: Append to new column. Backend doesn't support generic reordering *within* column yet (just status change).
-        destList.push(movedItem);
+    movedItem.kanbanOrder = newOrder;
 
-        return {
-          ...prev,
-          [activeContainer]: sourceList,
-          [overContainer]: destList,
-        };
-      });
+    setColumns((prev) => ({
+      ...prev,
+      [activeContainer]: sourceList,
+      [overContainer]: destList,
+    }));
 
-      // API Call
-      try {
-        await kanbanService.moveCard(activeIdVal, overContainer);
-      } catch (err) {
-        console.error("Move failed", err);
-        // Could Revert here
-        fetchBoard(); // easiest revert
-      }
+    try {
+      await kanbanService.moveCard(activeIdVal, overContainer, newOrder);
+    } catch (err) {
+      console.error("Move failed", err);
+      message.error("Failed to save new position");
+      fetchBoard(); 
     }
   };
 
-  const renderActiveCard = () => {
+  const renderActiveOverlay = () => {
     if (!activeId) return null;
-    // Find the card data
+    
+    // 1. Check if it's a column
+    const foundMeta = meta.find(m => m.id === activeId);
+    if (foundMeta) {
+      return (
+        <KanbanColumnComponent
+          id={foundMeta.id}
+          label={foundMeta.label}
+          color={foundMeta.color}
+          cards={processedColumns[foundMeta.key] || []}
+          onRefresh={() => {}}
+          onCardClick={() => {}}
+        />
+      );
+    }
+
+    // 2. Otherwise it's a card
     for (const key in columns) {
       const found = columns[key].find(c => c.id === activeId);
       if (found) return <KanbanCard card={found} onRefresh={() => { }} onClick={() => { }} />;
@@ -231,75 +333,7 @@ export default function KanbanBoard({ onCardClick }: { onCardClick: (card: Kanba
   }
 
   return (
-    <div className="h-full overflow-x-auto p-5 bg-gray-50">
-      {/* Controls Container */}
-      <div className="mb-6 flex flex-wrap items-center gap-4 bg-white p-2 rounded-xl border border-gray-100 shadow-sm w-fit">
-
-        {/* Filter Section */}
-        <div className="flex items-center gap-3 pl-2">
-          <div className="flex items-center gap-2 text-gray-500 font-medium">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-            </svg>
-            <span>Filter:</span>
-          </div>
-
-          <button
-            onClick={() => setFilters(prev => ({ ...prev, unread: !prev.unread }))}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all ${filters.unread ? 'border-blue-200 bg-blue-50 text-blue-700 font-medium' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
-          >
-            <div className={`w-4 h-4 rounded border flex items-center justify-center ${filters.unread ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
-              {filters.unread && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
-            </div>
-            Unread
-          </button>
-
-          <button
-            onClick={() => setFilters(prev => ({ ...prev, hasAttachment: !prev.hasAttachment }))}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all ${filters.hasAttachment ? 'border-blue-200 bg-blue-50 text-blue-700 font-medium' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
-          >
-            <div className={`w-4 h-4 rounded border flex items-center justify-center ${filters.hasAttachment ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'}`}>
-              {filters.hasAttachment && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
-            </div>
-            Has attachment
-          </button>
-        </div>
-
-        {/* Divider */}
-        <div className="h-6 w-px bg-gray-200 mx-1"></div>
-
-        {/* Sort Section */}
-        <div className="flex items-center gap-3 pr-2">
-          <div className="flex items-center gap-2 text-gray-500 font-medium">
-            <ReloadOutlined className={loading ? "animate-spin" : ""} />
-            <span>Sort:</span>
-          </div>
-
-          <div className="relative">
-            <select
-              value={sortMode}
-              onChange={(e) => setSortMode(e.target.value as 'date-desc' | 'date-asc' | 'sender')}
-              className="appearance-none bg-white border border-gray-200 text-gray-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-3 pr-8 py-1.5 outline-none cursor-pointer hover:border-gray-300 transition-colors"
-            >
-              <option value="date-desc">Newest First</option>
-              <option value="date-asc">Oldest First</option>
-              <option value="sender">Sender Name</option>
-            </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-            </div>
-          </div>
-        </div>
-
-        <div className="ml-auto pl-2 flex items-center gap-2">
-          <button title="Board Settings" onClick={() => setSettingsOpen(true)} className="p-2 text-gray-400 hover:text-blue-600 transition-colors">
-            <SettingOutlined />
-          </button>
-          <button title="Refresh Board" onClick={fetchBoard} className="p-2 text-gray-400 hover:text-blue-600 transition-colors">
-            <ReloadOutlined spin={loading} />
-          </button>
-        </div>
-      </div>
+    <div className="h-full overflow-x-auto p-5 bg-gray-50 flex flex-col pt-0">
 
       <DndContext
         sensors={sensors}
@@ -308,28 +342,34 @@ export default function KanbanBoard({ onCardClick }: { onCardClick: (card: Kanba
         onDragEnd={handleDragEnd}
       >
         <div className="flex gap-4 h-full min-w-fit pb-4">
-          {meta.map((col) => (
-            <KanbanColumn
-              key={col.key}
-              id={col.key}
-              label={col.label}
-              color={col.color}
-              cards={processedColumns[col.key] || []}
-              onRefresh={fetchBoard}
-              onCardClick={onCardClick}
-            />
-          ))}
+          <SortableContext items={meta.map(m => m.id)} strategy={horizontalListSortingStrategy}>
+            {meta.map((col) => (
+              <KanbanColumnComponent
+                key={col.key}
+                id={col.id} // use database ID for sortable!
+                label={col.label}
+                color={col.color}
+                cards={processedColumns[col.key] || []}
+                onRefresh={fetchBoard}
+                onCardClick={onCardClick}
+              />
+            ))}
+          </SortableContext>
+          
+          <AddColumnButton onClick={onAddColumnClick || (() => {})} />
         </div>
 
         <DragOverlay>
-          {renderActiveCard()}
+          {renderActiveOverlay()}
         </DragOverlay>
       </DndContext>
 
       <KanbanSettingsModal
         open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
+        onClose={onSettingsClose}
         onColumnsChanged={fetchColumnsMeta}
+        initialSelectedColumnId={initialSelectedColumnId}
+        triggerAddOnOpen={triggerAddOnOpen}
       />
     </div>
   );

@@ -21,7 +21,11 @@ export interface Attachment {
 
 export interface Email {
   id: string;
+  messageId?: string;
   threadId?: string;
+  gmailMessageId?: string;
+  gmailLink?: string;
+  accountEmail?: string;
   mailboxId: string;
   from: EmailAddress;
   to: EmailAddress[];
@@ -37,6 +41,13 @@ export interface Email {
   receivedAt: string;
   createdAt: string;
   summary?: string;
+  summarySource?: string;
+}
+
+export interface ApiResponse<T> {
+  success: boolean;
+  message: string;
+  data: T;
 }
 
 export interface EmailListResponse {
