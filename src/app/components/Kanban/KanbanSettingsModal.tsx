@@ -392,11 +392,31 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({
                       size="large"
                       placeholder="Select Gmail Label (optional)"
                       value={editForm.gmailLabel || undefined}
-                      onChange={val => setEditForm(prev => ({ ...prev, gmailLabel: val || '' }))}
+                      onChange={async (val) => {
+                        if (val === '__CREATE_NEW__') {
+                          const name = prompt('Enter new Gmail label name:');
+                          if (name && name.trim()) {
+                            try {
+                              const newLabel = await kanbanService.createGmailLabel(name.trim());
+                              setGmailLabels(prev => [...prev, newLabel]);
+                              setEditForm(prev => ({ ...prev, gmailLabel: newLabel.id }));
+                              message.success(`Gmail label "${name}" created!`);
+                            } catch (err) {
+                              message.error('Failed to create Gmail label');
+                              console.error(err);
+                            }
+                          }
+                        } else {
+                          setEditForm(prev => ({ ...prev, gmailLabel: val || '' }));
+                        }
+                      }}
                       allowClear
                       className="w-full"
                       status={getDuplicateLabelWarning(editForm.gmailLabel, editingColumn?.id) ? 'warning' : undefined}
-                      options={gmailLabels.map(l => ({ value: l.id, label: `${l.name} (${l.type})` }))}
+                      options={[
+                        ...gmailLabels.map(l => ({ value: l.id, label: `${l.name} (${l.type})` })),
+                        { value: '__CREATE_NEW__', label: '➕ Create new Gmail label...' },
+                      ]}
                     />
                     {getDuplicateLabelWarning(editForm.gmailLabel, editingColumn?.id) && (
                       <div className="text-amber-600 text-xs mt-1 bg-amber-50 p-2 rounded-lg">

@@ -144,6 +144,11 @@ export const kanbanService = {
     const response = await apiClient.get<{ labels: GmailLabel[] }>('gmail/labels');
     return response.data.labels || [];
   },
+
+  createGmailLabel: async (name: string): Promise<GmailLabel> => {
+    const response = await apiClient.post<{ label: GmailLabel }>('gmail/labels', { name });
+    return response.data.label;
+  },
 };
 
 // ========== Types for Column Config ==========
