@@ -46,16 +46,25 @@ const transformCard = (data: any): KanbanCardType => ({
   kanbanOrder: data.kanban_order,
 });
 
-const transformColumn = (data: any): KanbanColumn => ({
-  id: String(data.id),
-  userId: data.userId || '',
-  key: data.linkedStatus || data.key || 'INBOX',
-  label: data.name || data.label || '',
-  order: data.position ?? data.order ?? 0,
-  gmailLabel: data.gmailLabelId || data.gmailLabel || '',
-  color: data.color || '#f1f5f9',
-  isDefault: !!(data.linkedStatus || data.isDefault),
-});
+export const DEFAULT_STATUSES = ['INBOX', 'TODO', 'IN_PROGRESS', 'DONE', 'SNOOZED'];
+
+const transformColumn = (data: any): KanbanColumn => {
+  // Use 'key' from backend if available, otherwise fallback to id.
+  // The backend now sends linkedStatus or id as the 'key'.
+  const key = data.key || String(data.id);
+  const isDefault = !!(data.isDefault || (data.key && DEFAULT_STATUSES.includes(data.key)));
+  
+  return {
+    id: String(data.id),
+    userId: data.userId || '',
+    key: key,
+    label: data.name || data.label || '',
+    order: data.position ?? data.order ?? 0,
+    gmailLabel: data.gmailLabelId || data.gmailLabel || '',
+    color: data.color || '#f1f5f9',
+    isDefault: isDefault,
+  };
+};
 
 export const kanbanService = {
   getKanban: async (opts?: { unread?: boolean; hasAttachments?: boolean; sortBy?: string; sortOrder?: string }) => {
@@ -109,14 +118,14 @@ export const kanbanService = {
     return (response.data.columns || []).map(transformColumn);
   },
 
-  createColumn: async (data: CreateColumnRequest): Promise<KanbanColumn> => {
-    const response = await apiClient.post<{ column: any }>('kanban/columns', data);
-    return transformColumn(response.data.column);
+  createColumn: async (data: CreateColumnRequest): Promise<KanbanColumn[]> => {
+    const response = await apiClient.post<{ columns: any[] }>('kanban/columns', data);
+    return (response.data.columns || []).map(transformColumn);
   },
 
-  updateColumn: async (id: string, data: UpdateColumnRequest): Promise<KanbanColumn> => {
-    const response = await apiClient.put<{ column: any }>(`kanban/columns/${id}`, data);
-    return transformColumn(response.data.column);
+  updateColumn: async (id: string, data: UpdateColumnRequest): Promise<KanbanColumn[]> => {
+    const response = await apiClient.put<{ columns: any[] }>(`kanban/columns/${id}`, data);
+    return (response.data.columns || []).map(transformColumn);
   },
 
   deleteColumn: async (id: string): Promise<KanbanColumn[]> => {

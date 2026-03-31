@@ -12,21 +12,29 @@ import {
   DragStartEvent,
 } from '@dnd-kit/core';
 import {
+  SortableContext,
   sortableKeyboardCoordinates,
+  horizontalListSortingStrategy,
+  arrayMove
 } from '@dnd-kit/sortable';
 import {
   ReloadOutlined,
   SettingOutlined,
   CloudSyncOutlined
 } from '@ant-design/icons';
-import { KanbanCardType, ColMeta, kanbanService } from '@/services/kanbanService';
+import { KanbanCardType, ColMeta, kanbanService, KanbanColumn } from '@/services/kanbanService';
 import { emailService } from '@/services/email';
-import KanbanColumn from './KanbanColumn';
+import KanbanColumnComponent from './KanbanColumn';
 import KanbanCard from './KanbanCard';
 import KanbanSettingsModal from './KanbanSettingsModal';
+import AddColumnButton from '../AddColumnButton';
 
 import { useEmailNotifications } from '@/hooks/useEmailNotifications';
 import { FilterState, SortMode } from '../FilterBar';
+
+export interface ColumnWithMeta extends ColMeta {
+  id: string; // Database ID for sortable items
+}
 
 export default function KanbanBoard({ 
   onCardClick,
@@ -34,17 +42,25 @@ export default function KanbanBoard({
   sortMode,
   accountId,
   settingsOpen,
-  onSettingsClose
+  onSettingsClose,
+  onOpenSettingsWithColumn,
+  onAddColumnClick,
+  initialSelectedColumnId,
+  triggerAddOnOpen,
 }: { 
   onCardClick: (card: KanbanCardType) => void,
   filters: FilterState,
   sortMode: SortMode,
   accountId: number | string | null,
   settingsOpen: boolean,
-  onSettingsClose: () => void
+  onSettingsClose: () => void,
+  onOpenSettingsWithColumn?: (columnId: string) => void,
+  onAddColumnClick?: () => void,
+  initialSelectedColumnId?: string,
+  triggerAddOnOpen?: boolean,
 }) {
   const [columns, setColumns] = useState<Record<string, KanbanCardType[]>>({});
-  const [meta, setMeta] = useState<ColMeta[]>([]);
+  const [meta, setMeta] = useState<ColumnWithMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -54,9 +70,10 @@ export default function KanbanBoard({
   const fetchColumnsMeta = useCallback(async () => {
     try {
       const columnsData = await kanbanService.getColumns();
-      const incomingMeta: ColMeta[] = columnsData
+      const incomingMeta: ColumnWithMeta[] = columnsData
         .sort((a, b) => a.order - b.order)
         .map(col => ({
+          id: col.id,
           key: col.key,
           label: col.label,
           color: col.color
@@ -97,9 +114,10 @@ export default function KanbanBoard({
 
       // Map KanbanColumn[] to ColMeta[]
       // Sort by order to ensure correct display order
-      const incomingMeta: ColMeta[] = columnsData
+      const incomingMeta: ColumnWithMeta[] = columnsData
         .sort((a, b) => a.order - b.order)
         .map(col => ({
+          id: col.id,
           key: col.key,
           label: col.label,
           color: col.color
@@ -175,6 +193,32 @@ export default function KanbanBoard({
     if (!over) return;
 
     const overId = over.id as string;
+
+    // Check if we are dragging a COLUMN or a CARD
+    const isActiveColumn = meta.some(m => m.id === activeIdVal);
+    const isOverColumn = meta.some(m => m.id === overId);
+
+    if (isActiveColumn) {
+      if (activeIdVal === overId) return;
+
+      const oldIndex = meta.findIndex(m => m.id === activeIdVal);
+      const newIndex = meta.findIndex(m => m.id === overId);
+      
+      const newMetaOrder = arrayMove(meta, oldIndex, newIndex);
+      setMeta(newMetaOrder);
+
+      try {
+        await kanbanService.reorderColumns(newMetaOrder.map(m => m.id));
+        message.success('Columns reordered');
+      } catch (error) {
+        console.error('Failed to reorder columns:', error);
+        message.error('Failed to save column order');
+        fetchColumnsMeta();
+      }
+      return;
+    }
+
+    // Original Card Drag logic
     const activeContainer = findContainer(activeIdVal, columns);
     const overContainer = findContainer(overId, columns);
 
@@ -189,65 +233,63 @@ export default function KanbanBoard({
     const activeIndex = sourceList.findIndex(c => c.id === activeIdVal);
     const overIndex = destList.findIndex(c => c.id === overId);
     
-    // Option B: Default to top (index 0) if dropping on column itself
     let newIndex = overIndex === -1 ? 0 : overIndex;
     
-    // Remove from source
     const [movedItem] = sourceList.splice(activeIndex, 1);
-    
-    // Adjust newIndex if moving within same container
-    if (activeContainer === overContainer && activeIndex < newIndex) {
-      // no-op, splice already handled the shift
-    }
-
-    // Insert into destination
     destList.splice(newIndex, 0, movedItem);
 
-    // 2. Calculate kanbanOrder
-    // Since we sort by DESC, higher index means lower order.
-    // Neighbors for order calculation:
-    const prevItem = destList[newIndex - 1]; // Item above
-    const nextItem = destList[newIndex + 1]; // Item below
+    const prevItem = destList[newIndex - 1]; 
+    const nextItem = destList[newIndex + 1]; 
     
     let newOrder: number;
-    const GAP = 1000; // Large initial gap for new items
+    const GAP = 1000; 
 
     if (!prevItem && !nextItem) {
-      // Only item in column
       newOrder = Date.now(); 
     } else if (!prevItem) {
-      // Dropped at the top
       newOrder = (nextItem.kanbanOrder || 0) + GAP;
     } else if (!nextItem) {
-      // Dropped at the bottom
       newOrder = (prevItem.kanbanOrder || 0) - GAP;
     } else {
-      // Dropped between two items
       newOrder = ((prevItem.kanbanOrder || 0) + (nextItem.kanbanOrder || 0)) / 2;
     }
 
     movedItem.kanbanOrder = newOrder;
 
-    // 3. Optimistic Update
     setColumns((prev) => ({
       ...prev,
       [activeContainer]: sourceList,
       [overContainer]: destList,
     }));
 
-    // 4. API Call
     try {
       await kanbanService.moveCard(activeIdVal, overContainer, newOrder);
     } catch (err) {
       console.error("Move failed", err);
       message.error("Failed to save new position");
-      fetchBoard(); // Revert
+      fetchBoard(); 
     }
   };
 
-  const renderActiveCard = () => {
+  const renderActiveOverlay = () => {
     if (!activeId) return null;
-    // Find the card data
+    
+    // 1. Check if it's a column
+    const foundMeta = meta.find(m => m.id === activeId);
+    if (foundMeta) {
+      return (
+        <KanbanColumnComponent
+          id={foundMeta.id}
+          label={foundMeta.label}
+          color={foundMeta.color}
+          cards={processedColumns[foundMeta.key] || []}
+          onRefresh={() => {}}
+          onCardClick={() => {}}
+        />
+      );
+    }
+
+    // 2. Otherwise it's a card
     for (const key in columns) {
       const found = columns[key].find(c => c.id === activeId);
       if (found) return <KanbanCard card={found} onRefresh={() => { }} onClick={() => { }} />;
@@ -300,21 +342,25 @@ export default function KanbanBoard({
         onDragEnd={handleDragEnd}
       >
         <div className="flex gap-4 h-full min-w-fit pb-4">
-          {meta.map((col) => (
-            <KanbanColumn
-              key={col.key}
-              id={col.key}
-              label={col.label}
-              color={col.color}
-              cards={processedColumns[col.key] || []}
-              onRefresh={fetchBoard}
-              onCardClick={onCardClick}
-            />
-          ))}
+          <SortableContext items={meta.map(m => m.id)} strategy={horizontalListSortingStrategy}>
+            {meta.map((col) => (
+              <KanbanColumnComponent
+                key={col.key}
+                id={col.id} // use database ID for sortable!
+                label={col.label}
+                color={col.color}
+                cards={processedColumns[col.key] || []}
+                onRefresh={fetchBoard}
+                onCardClick={onCardClick}
+              />
+            ))}
+          </SortableContext>
+          
+          <AddColumnButton onClick={onAddColumnClick || (() => {})} />
         </div>
 
         <DragOverlay>
-          {renderActiveCard()}
+          {renderActiveOverlay()}
         </DragOverlay>
       </DndContext>
 
@@ -322,6 +368,8 @@ export default function KanbanBoard({
         open={settingsOpen}
         onClose={onSettingsClose}
         onColumnsChanged={fetchColumnsMeta}
+        initialSelectedColumnId={initialSelectedColumnId}
+        triggerAddOnOpen={triggerAddOnOpen}
       />
     </div>
   );

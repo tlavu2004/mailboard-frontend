@@ -65,6 +65,8 @@ export default function InboxPage() {
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [accountId, setAccountId] = useState<number | null>(null);
   const [kanbanSettingsOpen, setKanbanSettingsOpen] = useState(false);
+  const [editingColumnId, setEditingColumnId] = useState<string | undefined>(undefined);
+  const [autoAddColumn, setAutoAddColumn] = useState(false);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -804,7 +806,21 @@ export default function InboxPage() {
               sortMode={sortMode}
               accountId={accountId}
               settingsOpen={kanbanSettingsOpen}
-              onSettingsClose={() => setKanbanSettingsOpen(false)}
+              onSettingsClose={() => {
+                setKanbanSettingsOpen(false);
+                setEditingColumnId(undefined);
+                setAutoAddColumn(false);
+              }}
+              onOpenSettingsWithColumn={(columnId) => {
+                setEditingColumnId(columnId);
+                setKanbanSettingsOpen(true);
+              }}
+              onAddColumnClick={() => {
+                setKanbanSettingsOpen(true);
+                setAutoAddColumn(true);
+              }}
+              initialSelectedColumnId={editingColumnId}
+              triggerAddOnOpen={autoAddColumn}
             />
 
             {/* Modal for Kanban Detail View */}

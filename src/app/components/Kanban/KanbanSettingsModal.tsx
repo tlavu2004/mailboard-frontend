@@ -22,6 +22,8 @@ interface KanbanSettingsModalProps {
   open: boolean;
   onClose: () => void;
   onColumnsChanged: () => void;
+  initialSelectedColumnId?: string;
+  triggerAddOnOpen?: boolean;
 }
 
 // Sortable item wrapper with new design
@@ -69,7 +71,13 @@ const SortableColumnItem: React.FC<{
   );
 };
 
-const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose, onColumnsChanged }) => {
+const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ 
+  open, 
+  onClose, 
+  onColumnsChanged, 
+  initialSelectedColumnId,
+  triggerAddOnOpen
+}) => {
   const [columns, setColumns] = useState<KanbanColumn[]>([]);
   const [gmailLabels, setGmailLabels] = useState<GmailLabel[]>([]);
   const [loading, setLoading] = useState(false);
@@ -77,7 +85,8 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose
 
   // Edit state
   const [editingColumn, setEditingColumn] = useState<KanbanColumn | null>(null);
-  const [editForm, setEditForm] = useState({ label: '', gmailLabel: '', color: '' });
+  const [isCreating, setIsCreating] = useState(false);
+  const [editForm, setEditForm] = useState({ label: '', gmailLabel: '', color: '#f1f5f9' });
 
   // Mobile view state
   const [showEditPanel, setShowEditPanel] = useState(false);
@@ -104,8 +113,23 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose
       fetchData();
       setShowEditPanel(false);
       setEditingColumn(null);
+      
+      // NEW: Auto-trigger add if prompted from board
+      if (triggerAddOnOpen) {
+        handleAddColumn();
+      }
     }
-  }, [open]);
+  }, [open, triggerAddOnOpen]);
+
+  // Handle initial column selection when columns are loaded
+  useEffect(() => {
+    if (open && initialSelectedColumnId && columns.length > 0) {
+      const col = columns.find(c => c.id === initialSelectedColumnId);
+      if (col) {
+        startEdit(col);
+      }
+    }
+  }, [open, initialSelectedColumnId, columns]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -144,64 +168,64 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose
     }
   };
 
-  const handleAddColumn = async () => {
-    setSaving(true);
-    const tempId = `temp_${Date.now()}`;
-    const tempColumn = {
-      id: tempId,
-      key: `new_column_${Date.now()}`,
-      label: 'New Column',
-      gmailLabel: '',
-      color: '#f1f5f9',
-      order: columns.length,
-      isDefault: false,
-      userId: ''
-    };
-    setColumns(prev => [...prev, tempColumn]);
-    startEdit(tempColumn);
-
-    try {
-      const newColumn = await kanbanService.createColumn({
-        label: 'New Column',
-        gmailLabel: '',
-        color: '#f1f5f9',
-      });
-      setColumns(prev => prev.map(col => col.id === tempId ? newColumn : col).sort((a, b) => a.order - b.order));
-      setEditingColumn(newColumn);
-      setEditForm({ label: newColumn.label, gmailLabel: newColumn.gmailLabel || '', color: newColumn.color || '#64748b' });
-      onColumnsChanged();
-    } catch (error) {
-      console.error('Failed to create column:', error);
-      message.error('Failed to create column');
-      setColumns(prev => prev.filter(col => col.id !== tempId));
-      setEditingColumn(null);
-      setShowEditPanel(false);
-    } finally {
-      setSaving(false);
-    }
+  const handleAddColumn = () => {
+    // Stage 1: Just enter draft mode, do not sync with backend or modify list yet
+    setIsCreating(true);
+    setEditingColumn(null);
+    setEditForm({ 
+      label: 'New Column', 
+      gmailLabel: '', 
+      color: '#f1f5f9' 
+    });
+    setShowEditPanel(true);
   };
 
   const handleUpdateColumn = async () => {
-    if (!editingColumn) return;
     if (!editForm.label.trim()) {
       message.warning('Label is required');
       return;
     }
     setSaving(true);
     try {
-      const updated = await kanbanService.updateColumn(editingColumn.id, {
-        label: editForm.label,
-        gmailLabel: editForm.gmailLabel,
-        color: editForm.color,
-      });
-      message.success('Column updated');
-      setColumns(prev => prev.map(col => col.id === updated.id ? updated : col).sort((a, b) => a.order - b.order));
-      setEditingColumn(updated);
-      setEditForm({ label: updated.label, gmailLabel: updated.gmailLabel || '', color: updated.color || '' });
+      if (isCreating) {
+        // Create new column
+        const updatedColumns = await kanbanService.createColumn({
+          label: editForm.label,
+          gmailLabel: editForm.gmailLabel,
+          color: editForm.color,
+        });
+        message.success('Column created');
+        
+        const sorted = updatedColumns.sort((a, b) => a.order - b.order);
+        setColumns(sorted);
+        
+        // Find the newly created one to continue editing if desired
+        const newCol = sorted.find(c => c.label === editForm.label) || sorted[sorted.length - 1];
+        if (newCol) {
+          setEditingColumn(newCol);
+          setIsCreating(false);
+        }
+      } else if (editingColumn) {
+        // Update existing column
+        const updatedColumns = await kanbanService.updateColumn(editingColumn.id, {
+          label: editForm.label,
+          gmailLabel: editForm.gmailLabel,
+          color: editForm.color,
+        });
+        message.success('Column updated');
+        
+        const sorted = updatedColumns.sort((a, b) => a.order - b.order);
+        setColumns(sorted);
+        
+        const updatedCol = sorted.find(c => c.id === editingColumn.id);
+        if (updatedCol) {
+          setEditingColumn(updatedCol);
+        }
+      }
       onColumnsChanged();
     } catch (error) {
-      console.error('Failed to update column:', error);
-      message.error('Failed to update column');
+      console.error('Failed to save column:', error);
+      message.error('Failed to save column');
     } finally {
       setSaving(false);
     }
@@ -232,6 +256,7 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose
   };
 
   const startEdit = (col: KanbanColumn) => {
+    setIsCreating(false);
     setEditingColumn(col);
     setEditForm({ label: col.label, gmailLabel: col.gmailLabel || '', color: col.color || '#64748b' });
     setShowEditPanel(true);
@@ -311,9 +336,9 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose
           </div>
 
           {/* Right side: Editing Panel - Full width on mobile when editing */}
-          <div className={`${showEditPanel ? 'flex' : 'hidden md:flex'} flex-1 flex-col bg-white`}>
-            {editingColumn ? (
-              <div className="flex-1 flex flex-col p-6 md:p-12 overflow-y-auto">
+          <div className={`${showEditPanel ? 'flex' : 'hidden md:flex'} flex-1 flex-col bg-white overflow-hidden`}>
+            {editingColumn || isCreating ? (
+              <div className="flex-1 flex flex-col p-6 md:p-12">
                 {/* Mobile back button */}
                 <button 
                   onClick={handleBackToList}
@@ -321,21 +346,27 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose
                 >
                   <ChevronRight size={16} className="rotate-180" /> Back to list
                 </button>
-
+ 
                 <div className="flex flex-col md:flex-row justify-between items-start gap-4 mb-8 md:mb-10">
                   <div>
-                    <span className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1 block">Editing</span>
-                    <h3 className="text-2xl md:text-3xl font-bold text-gray-800">{editingColumn.label}</h3>
+                    <span className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1 block">
+                      {isCreating ? 'New Creation' : 'Editing'}
+                    </span>
+                    <h3 className="text-2xl md:text-3xl font-bold text-gray-800">
+                      {isCreating ? 'New Column' : editingColumn?.label}
+                    </h3>
                   </div>
-                  <Tooltip title={editingColumn.isDefault ? "Cannot delete default columns" : ""}>
-                    <button 
-                      onClick={handleDeleteColumn}
-                      disabled={editingColumn.isDefault}
-                      className="flex items-center gap-2 px-3 md:px-4 py-2 bg-red-50 text-red-500 rounded-lg text-xs font-medium hover:bg-red-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Trash2 size={14} /> Delete Column
-                    </button>
-                  </Tooltip>
+                  {!isCreating && editingColumn && (
+                    <Tooltip title={editingColumn.isDefault ? "Cannot delete default columns" : ""}>
+                      <button 
+                        onClick={handleDeleteColumn}
+                        disabled={editingColumn.isDefault}
+                        className="flex items-center gap-2 px-3 md:px-4 py-2 bg-red-50 text-red-500 rounded-lg text-xs font-medium hover:bg-red-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Trash2 size={14} /> Delete Column
+                      </button>
+                    </Tooltip>
+                  )}
                 </div>
 
                 <div className="space-y-6 md:space-y-8">
@@ -397,7 +428,8 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({ open, onClose
                       disabled={saving}
                       className="flex items-center gap-2 px-6 md:px-8 py-2.5 md:py-3 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-all shadow-sm disabled:opacity-50"
                     >
-                      <Save size={14} /> {saving ? 'Saving...' : 'Save Changes'}
+                      {saving ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> : <Save size={14} />} 
+                      {saving ? 'Creating...' : (isCreating ? 'Create Column' : 'Save Changes')}
                     </button>
                   </div>
                 </div>
