@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Layout, Menu, List, Card, Button, Badge, Typography, Space, Avatar, Spin, message, Empty, Modal, Pagination, Dropdown, Drawer } from 'antd';
 import EmailDetail from '@/app/components/EmailDetail';
 import ComposeModal from '@/components/ComposeModal';
@@ -35,6 +35,8 @@ import apiClient from '@/services/api';
 import { Mailbox, Email, ApiResponse } from '@/types/email';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useEmailNotifications } from '@/hooks/useEmailNotifications';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import KeyboardHelpModal from '@/app/components/KeyboardHelpModal';
 import './inbox.css';
 
 const { Header, Sider, Content } = Layout;
@@ -91,6 +93,17 @@ export default function InboxPage() {
     hasAttachment: false,
   });
   const [sortMode, setSortMode] = useState<SortMode>('date-desc');
+  const [activeIndex, setActiveIndex] = useState<number>(-1);
+  const [isKeyboardHelpVisible, setIsKeyboardHelpVisible] = useState(false);
+
+  // Refs
+  const searchInputRef = useRef<any>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Reset active index when emails or view mode change
+  useEffect(() => {
+    setActiveIndex(-1);
+  }, [emails, viewMode, selectedMailbox]);
 
   useEffect(() => {
     const savedView = localStorage.getItem('viewMode');
@@ -351,6 +364,53 @@ export default function InboxPage() {
   }, [selectedMailbox, loadMailboxes, loadEmails, pageSize, filters]);
 
   useEmailNotifications(accountId, handleNotification);
+
+  // Keyboard Shortcuts
+  useKeyboardShortcuts({
+    'j': () => {
+      if (viewMode === 'list' && emails.length > 0) {
+        setActiveIndex(prev => Math.min(prev + 1, emails.length - 1));
+      }
+    },
+    'k': () => {
+      if (viewMode === 'list' && emails.length > 0) {
+        setActiveIndex(prev => Math.max(prev - 1, 0));
+      }
+    },
+    'Enter': () => {
+      if (viewMode === 'list' && activeIndex >= 0 && activeIndex < emails.length) {
+        handleEmailSelect(emails[activeIndex]);
+      }
+    },
+    'c': () => setIsComposeVisible(true),
+    'r': () => {
+      if (selectedEmail) handleReply(selectedEmail);
+      else if (activeIndex >= 0) handleReply(emails[activeIndex]);
+    },
+    'f': () => {
+      if (selectedEmail) handleForward(selectedEmail);
+      else if (activeIndex >= 0) handleForward(emails[activeIndex]);
+    },
+    '#': () => {
+      const emailToDelete = selectedEmail || (activeIndex >= 0 ? emails[activeIndex] : null);
+      if (emailToDelete) handleDelete(new MouseEvent('click') as any, emailToDelete);
+    },
+    'Delete': () => {
+      const emailToDelete = selectedEmail || (activeIndex >= 0 ? emails[activeIndex] : null);
+      if (emailToDelete) handleDelete(new MouseEvent('click') as any, emailToDelete);
+    },
+    'Escape': () => {
+      if (selectedEmail) setSelectedEmail(null);
+      if (isComposeVisible) handleComposeClose();
+      if (isSearching) handleSearch('');
+      setActiveIndex(-1);
+    },
+    '/': (e) => {
+      e.preventDefault();
+      if (searchInputRef.current) searchInputRef.current.focus();
+    },
+    '?': () => setIsKeyboardHelpVisible(true)
+  });
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -668,7 +728,11 @@ export default function InboxPage() {
 
           {/* Search Bar - will order change on mobile via CSS */}
           {/* Search Bar */}
-          <SearchInput onSearch={handleSearch} defaultValue={searchQuery} />
+          <SearchInput 
+            onSearch={handleSearch} 
+            defaultValue={searchQuery} 
+            ref={searchInputRef}
+          />
 
           <div className="header-actions">
             <Space>
@@ -997,17 +1061,23 @@ export default function InboxPage() {
                 ) : (
                   <List
                     dataSource={emails}
-                    renderItem={(email) => (
+                    renderItem={(email, index) => (
                       <Card
                         hoverable
                         style={{
                           marginBottom: '8px',
                           cursor: 'pointer',
                           backgroundColor: email.isRead ? '#fff' : '#f6f8fa',
-                          borderLeft: selectedEmail?.id === email.id ? '3px solid #667eea' : '3px solid transparent'
+                          borderLeft: selectedEmail?.id === email.id ? '3px solid #667eea' : '3px solid transparent',
+                          boxShadow: activeIndex === index ? '0 0 0 2px #1890ff' : 'none',
+                          transform: activeIndex === index ? 'translateX(4px)' : 'none',
+                          transition: 'all 0.2s'
                         }}
                         styles={{ body: { padding: '12px 16px' } }}
-                        onClick={() => handleEmailSelect(email)}
+                        onClick={() => {
+                          setActiveIndex(index);
+                          handleEmailSelect(email);
+                        }}
                       >
                         <Space direction="vertical" style={{ width: '100%' }} size={4}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1122,6 +1192,10 @@ export default function InboxPage() {
             body: replyToEmail.body,
             receivedAt: replyToEmail.receivedAt
           } : undefined}
+        />
+        <KeyboardHelpModal 
+          visible={isKeyboardHelpVisible} 
+          onClose={() => setIsKeyboardHelpVisible(false)} 
         />
       </Layout>
     </ProtectedRoute>
