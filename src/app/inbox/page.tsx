@@ -31,6 +31,7 @@ import FilterBar, { FilterState, SortMode } from '@/app/components/FilterBar';
 import { useAuth } from '@/contexts/AuthContext';
 import { emailService } from '@/services/email';
 import { searchService } from '@/services/searchService';
+import { kanbanService } from '@/services/kanbanService';
 import apiClient from '@/services/api';
 import { Mailbox, Email, ApiResponse } from '@/types/email';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -411,6 +412,19 @@ export default function InboxPage() {
     },
     '?': () => setIsKeyboardHelpVisible(true)
   });
+
+  const handleSnooze = async (emailId: string, until: string) => {
+    try {
+      message.loading({ content: 'Snoozing email...', key: 'snooze' });
+      await kanbanService.snoozeCard(emailId, until);
+      message.success({ content: 'Email snoozed!', key: 'snooze' });
+      setSelectedEmail(null);
+      loadEmails(selectedMailbox);
+    } catch (error) {
+      console.error('Snooze failed:', error);
+      message.error({ content: 'Snooze failed', key: 'snooze' });
+    }
+  };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -1156,6 +1170,7 @@ export default function InboxPage() {
                 onDelete={handleDelete}
                 onReply={handleReply}
                 onForward={handleForward}
+                onSnooze={handleSnooze}
                 onSummarize={handleSummarize}
                 loadingSummary={loadingSummary}
                 onRefresh={async (email) => {
