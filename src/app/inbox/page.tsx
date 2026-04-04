@@ -266,17 +266,30 @@ export default function InboxPage() {
   // Auto-generate embeddings periodically (every 2 minutes)
   useEffect(() => {
     const generate = () => {
+      // If navigator says offline, skip immediately
+      if (!navigator.onLine) return;
+      
       searchService.generateEmbeddings(50)
         .then(result => {
           if (result.processed > 0) {
             console.log(`Auto-generated embeddings for ${result.processed} emails`);
           }
         })
-        .catch(err => console.error('Auto-embedding failed:', err));
+        .catch(err => {
+          // If it's a network error, it's expected when offline
+          if (err.message === 'Network Error' || !navigator.onLine) {
+            console.warn('[Embeddings] Network unavailable, skipping this attempt.');
+          } else {
+            console.error('[Embeddings] Auto-generation failed:', err);
+          }
+        });
     };
+
     generate();
     const interval = setInterval(generate, 2 * 60 * 1000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+    };
   }, []);
 
   const handlePageChange = (page: number, size?: number) => {
