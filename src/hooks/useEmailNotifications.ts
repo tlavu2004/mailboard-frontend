@@ -47,6 +47,10 @@ export const useEmailNotifications = (
     console.log(`[WebSocket] Attempting connection to: ${wsUrl}`);
 
     const connect = () => {
+      if (!navigator.onLine) {
+        console.log('[WebSocket] Offline mode detected, skipping connection.');
+        return;
+      }
       const ws = new WebSocket(wsUrl);
       socketRef.current = ws;
 

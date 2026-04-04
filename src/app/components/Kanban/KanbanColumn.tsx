@@ -31,16 +31,16 @@ const getColumnConfig = (id: string, label: string) => {
   if (lowerId.includes('inbox') || lowerLabel.includes('inbox')) {
      return { bg: 'bg-white', icon: <InboxOutlined />, iconColor: 'text-blue-500', badgeColor: 'bg-blue-50 text-blue-600' };
   }
-  if (lowerId.includes('todo') || lowerId.includes('to do') || lowerId.includes('chưa xử lý')) {
+  if (lowerId.includes('todo') || lowerId.includes('to do') || lowerId.includes('unprocessed') || lowerLabel.includes('chưa xử lý')) {
      return { bg: 'bg-white', icon: <ThunderboltFilled />, iconColor: 'text-orange-500', badgeColor: 'bg-orange-50 text-orange-600' };
   }
-  if (lowerId.includes('process') || lowerLabel.includes('process') || lowerLabel.includes('đang')) {
+  if (lowerId.includes('process') || lowerLabel.includes('process') || lowerLabel.includes('doing') || lowerLabel.includes('đang')) {
      return { bg: 'bg-white', icon: <ProjectOutlined />, iconColor: 'text-purple-500', badgeColor: 'bg-purple-50 text-purple-600' };
   }
-  if (lowerId.includes('snoozed') || lowerLabel.includes('tạm hoãn')) {
+  if (lowerId.includes('snoozed') || lowerLabel.includes('snooze') || lowerLabel.includes('tạm hoãn')) {
      return { bg: 'bg-white', icon: <ClockCircleOutlined />, iconColor: 'text-indigo-400', badgeColor: 'bg-indigo-50 text-indigo-600' };
   }
-  if (lowerId.includes('done') || lowerLabel.includes('xong')) {
+  if (lowerId.includes('done') || lowerLabel.includes('finished') || lowerLabel.includes('xong') || lowerLabel.includes('đã xử lý')) {
      return { bg: 'bg-white', icon: <CheckSquareFilled />, iconColor: 'text-green-500', badgeColor: 'bg-green-50 text-green-600' };
   }
 

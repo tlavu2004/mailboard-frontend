@@ -187,7 +187,7 @@ function KanbanCard({ card, onRefresh, onClick }: KanbanCardProps) {
           }}
           className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
         >
-          Xem chi tiết
+          View details
         </button>
       </div>
     </div>
