@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Typography, Space, Avatar, Card, Empty, Spin } from 'antd';
+import { Button, Typography, Space, Avatar, Card, Empty, Spin, Popover } from 'antd';
 import {
   ArrowLeftOutlined,
   StarOutlined,
@@ -9,8 +9,10 @@ import {
   ExportOutlined,
   ReloadOutlined,
   RobotOutlined,
+  ClockCircleOutlined,
 } from '@ant-design/icons';
 import { Email } from '@/types/email';
+import SnoozePopover from './SnoozePopover';
 
 const { Title, Text } = Typography;
 
@@ -24,6 +26,7 @@ interface EmailDetailProps {
   onRefresh?: (email: Email) => void;
   onSummarize?: (email: Email) => void;
   loadingSummary?: boolean;
+  onSnooze?: (emailId: string, until: string) => void;
   onDownloadAttachment: (emailId: string, attachmentId: string, filename: string) => void;
   showMobileDetail: boolean;
   className?: string;
@@ -40,6 +43,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
   onRefresh,
   onSummarize,
   loadingSummary,
+  onSnooze,
   onDownloadAttachment,
   showMobileDetail,
   className,
@@ -147,6 +151,20 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             >
               {email.isStarred ? 'Unstar' : 'Star'}
             </Button>
+            
+            <Popover
+              content={
+                <SnoozePopover 
+                  onConfirm={(until) => onSnooze && onSnooze(email.id, until)} 
+                />
+              }
+              trigger="click"
+              placement="bottomRight"
+            >
+              <Button icon={<ClockCircleOutlined />}>
+                Snooze
+              </Button>
+            </Popover>
 
             <Button icon={<DeleteOutlined />} danger onClick={(e) => onDelete(e, email)}>
               Delete

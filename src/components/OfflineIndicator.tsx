@@ -11,10 +11,11 @@ export default function OfflineIndicator() {
   useEffect(() => {
 
     const handleOnline = () => {
+      console.log('[OfflineIndicator] Network is back online');
       setIsOnline(true);
       api.success({
-        message: 'Đã kết nối lại',
-        description: 'Bạn đã có kết nối Internet. Dữ liệu đang được đồng bộ...',
+        message: 'Back Online',
+        description: 'Internet connection restored. Synchronizing data...',
         icon: <WifiOutlined style={{ color: '#52c41a' }} />,
         placement: 'bottomRight',
         duration: 3,
@@ -25,10 +26,11 @@ export default function OfflineIndicator() {
     };
 
     const handleOffline = () => {
+      console.log('[OfflineIndicator] Network is offline');
       setIsOnline(false);
       api.warning({
-        message: 'Mất kết nối',
-        description: 'Bạn đang ở chế độ offline. Một số tính năng có thể bị hạn chế.',
+        message: 'Connection Lost',
+        description: 'You are currently offline. Some features may be limited.',
         icon: <DisconnectOutlined style={{ color: '#faad14' }} />,
         placement: 'bottomRight',
         duration: 0, // Keep it open until back online
@@ -37,6 +39,11 @@ export default function OfflineIndicator() {
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    
+    // Initial check
+    const currentStatus = navigator.onLine;
+    console.log('[OfflineIndicator] Initial status:', currentStatus ? 'Online' : 'Offline');
+    setIsOnline(currentStatus);
 
     return () => {
       window.removeEventListener('online', handleOnline);
@@ -48,9 +55,9 @@ export default function OfflineIndicator() {
     <>
       {contextHolder}
       {!isOnline && (
-        <div className="fixed top-0 left-0 right-0 bg-yellow-500 text-white px-4 py-2 text-center z-50 text-sm">
+        <div className="fixed top-0 left-0 right-0 bg-amber-500 text-white px-4 py-2 text-center z-[9999] text-sm font-bold shadow-md animate-pulse">
           <DisconnectOutlined className="mr-2" />
-          Bạn đang ở chế độ offline - Đang hiển thị dữ liệu đã lưu
+          Internet Connection Lost - Using cached data (Offline Mode)
         </div>
       )}
     </>

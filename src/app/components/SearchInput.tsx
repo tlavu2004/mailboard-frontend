@@ -19,12 +19,22 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-const SearchInput: React.FC<SearchInputProps> = ({ onSearch, defaultValue = '' }) => {
+const SearchInput = React.forwardRef<any, SearchInputProps>(({ onSearch, defaultValue = '' }, ref) => {
   const [value, setValue] = useState(defaultValue);
   const [options, setOptions] = useState<SelectProps['options']>([]);
   const [loading, setLoading] = useState(false);
   const debouncedValue = useDebounce(value, 300);
   const isMounted = useRef(true);
+  const inputRef = useRef<any>(null);
+
+  // Expose focus method to parent via ref
+  React.useImperativeHandle(ref, () => ({
+    focus: () => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    }
+  }));
 
   useEffect(() => {
     isMounted.current = true;
@@ -92,6 +102,7 @@ const SearchInput: React.FC<SearchInputProps> = ({ onSearch, defaultValue = '' }
         popupMatchSelectWidth={true}
       >
         <Input
+          ref={inputRef}
           placeholder="Search emails..."
           prefix={<SearchOutlined style={{ color: loading ? '#1890ff' : '#999' }} />}
           onKeyDown={handleKeyDown}
@@ -105,6 +116,6 @@ const SearchInput: React.FC<SearchInputProps> = ({ onSearch, defaultValue = '' }
       </AutoComplete>
     </div>
   );
-};
+});
 
 export default SearchInput;

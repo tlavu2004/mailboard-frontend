@@ -1,240 +1,133 @@
-// Custom Service Worker with NetworkFirst Strategy
-// This service worker implements offline caching for the AI Email Box PWA
+// MailBoard Service Worker - FINAL ROBUST VERSION
+const CACHE_NAME = 'mailboard-v3';
+const OFFLINE_URL = '/~offline';
 
-const CACHE_VERSION = 'v1';
-const CACHE_NAME = `ai-emailbox-${CACHE_VERSION}`;
-const API_CACHE_NAME = `ai-emailbox-api-${CACHE_VERSION}`;
-
-// Static assets to cache on install
-const STATIC_CACHE_URLS = [
+const PRECACHE_URLS = [
   '/',
   '/login',
-  '/inbox',
-  '/offline',
+  '/manifest.json',
+  OFFLINE_URL
 ];
 
-// API endpoints to cache with NetworkFirst strategy
-const API_CACHE_PATTERNS = [
-  /\/api\/v1\/emails/,
-  /\/api\/v1\/kanban/,
-  /\/api\/v1\/statistics/,
-  /\/api\/v1\/search/,
-  /\/api\/v1\/auth/,
-  /\/api\/v1\/gmail/,
-];
+// Emergency HTML in case the cache fails
+const EMERGENCY_OFFLINE_HTML = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline - MailBoard</title>
+    <style>
+        body { font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f3f4f6; color: #374151; }
+        .card { background: white; padding: 2rem; border-radius: 1rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
+        button { background: #667eea; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 0.5rem; cursor: pointer; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>You're Offline</h1>
+        <p>MailBoard is currently unable to connect to the server. Please check your internet connection.</p>
+        <button onclick="window.location.reload()">Try Again</button>
+    </div>
+</body>
+</html>`;
 
-// Install event - cache static assets
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('[SW] Caching static assets');
-      return cache.addAll(STATIC_CACHE_URLS.map(url => new Request(url, { cache: 'no-cache' })));
-    }).then(() => {
-      console.log('[SW] Static assets cached successfully');
-      return self.skipWaiting();
-    }).catch((error) => {
-      console.error('[SW] Failed to cache static assets:', error);
-    })
-  );
-});
-
-// Activate event - clean up old caches
-self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating service worker...');
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
+      console.log('[SW] Pre-caching core assets...');
       return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME && cacheName !== API_CACHE_NAME) {
-            console.log('[SW] Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
+        PRECACHE_URLS.map(url => {
+          return fetch(url, { cache: 'no-cache' })
+            .then(response => {
+              if (response.ok) return cache.put(url, response);
+              throw new Error(`Response not OK for ${url}`);
+            })
+            .then(() => console.log(`[SW] Cached: ${url}`))
+            .catch(err => console.warn(`[SW] Skip cache for ${url}: ${err.message}`));
         })
       );
+    })
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  console.log('[SW] Service Worker activating...');
+  event.waitUntil(
+    caches.keys().then((keys) => {
+      return Promise.all(
+        keys.filter(key => key !== CACHE_NAME && key !== API_CACHE_NAME)
+            .map(key => {
+              console.log('[SW] Clean old cache:', key);
+              return caches.delete(key).catch(err => console.warn('[SW] Delete fail:', key, err.message));
+            })
+      );
     }).then(() => {
-      console.log('[SW] Service worker activated');
-      return self.clients.claim();
+      console.log('[SW] Now controlling all clients');
+      return self.clients.claim().catch(err => {
+        console.warn('[SW] clients.claim() ignored:', err.message);
+      });
     })
   );
 });
 
-// Fetch event - implement NetworkFirst strategy
 self.addEventListener('fetch', (event) => {
-  const { request } = event;
-  const url = new URL(request.url);
+  // Service Workers can only cache GET requests
+  if (event.request.method !== 'GET') return;
 
-  // Only handle GET requests - POST/PUT/DELETE cannot be cached
-  if (request.method !== 'GET') return;
+  const isNavigation = event.request.mode === 'navigate';
 
-  // Check if request is for API
-  const isApiRequest = API_CACHE_PATTERNS.some(pattern => pattern.test(url.pathname));
-  
-  // Check if request is for a navigation page (HTML)
-  const isNavigationRequest = request.mode === 'navigate' || 
-                              request.headers.get('accept').includes('text/html') ||
-                              STATIC_CACHE_URLS.includes(url.pathname);
+  if (isNavigation) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          // Update cache with latest version
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
+          return response;
+        })
+        .catch(async () => {
+          console.log('[SW] Navigation failed, searching cache...');
+          const cache = await caches.open(CACHE_NAME);
+          
+          // 1. Try to find the exact page in cache (e.g., /inbox)
+          const matchedResponse = await cache.match(event.request);
+          if (matchedResponse) return matchedResponse;
 
-  if (isApiRequest || isNavigationRequest) {
-    // NetworkFirst strategy for API and HTML pages
-    // This prevents ChunkLoadError by ensuring the latest index.html is loaded
-    event.respondWith(networkFirstStrategy(request));
+          // 2. Fallback to the dedicated offline page
+          const offlineResponse = await cache.match(OFFLINE_URL);
+          if (offlineResponse) return offlineResponse;
+
+          // 3. Last resort: Emergency HTML
+          return new Response(EMERGENCY_OFFLINE_HTML, {
+            headers: { 'Content-Type': 'text/html' }
+          });
+        })
+    );
   } else {
-    // CacheFirst strategy for other static assets (JS chunks, CSS, images)
-    event.respondWith(cacheFirstStrategy(request));
-  }
-});
+    // Stale-While-Revalidate for assets & API
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        const networked = fetch(event.request)
+          .then((res) => {
+            // Only cache successful GET responses
+            if (res && res.status === 200 && res.type === 'basic') {
+              const clone = res.clone();
+              caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
+            }
+            return res;
+          })
+          .catch(() => {
+            // If offline and not in cache, return a null response that the browser can handle
+            // or a 404 equivalent
+            return null; 
+          });
 
-/**
- * NetworkFirst Strategy
- * Try network first, fall back to cache if offline
- * Perfect for API calls where fresh data is preferred
- */
-async function networkFirstStrategy(request) {
-  const cache = await caches.open(API_CACHE_NAME);
-  
-  try {
-    // Try to fetch from network
-    const networkResponse = await fetch(request);
-    
-    // Only cache successful responses
-    if (networkResponse && networkResponse.status === 200) {
-      // Clone the response before caching
-      const responseToCache = networkResponse.clone();
-      
-      // Cache the fresh response
-      cache.put(request, responseToCache).catch((error) => {
-        console.warn('[SW] Failed to cache API response:', error);
-      });
-      
-      console.log('[SW] Serving fresh data from network:', request.url);
-    }
-    
-    return networkResponse;
-  } catch {
-    // Network failed, try cache
-    console.log('[SW] Network failed, trying cache for:', request.url);
-    const cachedResponse = await cache.match(request);
-    
-    if (cachedResponse) {
-      console.log('[SW] Serving cached data:', request.url);
-      // Add custom header to indicate this is cached data
-      const headers = new Headers(cachedResponse.headers);
-      headers.append('X-From-Cache', 'true');
-      
-      return new Response(cachedResponse.body, {
-        status: cachedResponse.status,
-        statusText: cachedResponse.statusText,
-        headers: headers
-      });
-    }
-    
-    // No cache available, return offline response
-    console.log('[SW] No cache available for:', request.url);
-    return new Response(
-      JSON.stringify({ 
-        error: 'Offline',
-        message: 'You are currently offline. Please check your internet connection.',
-        cached: false
-      }), 
-      {
-        status: 503,
-        headers: { 'Content-Type': 'application/json' }
-      }
-    );
-  }
-}
-
-/**
- * CacheFirst Strategy
- * Try cache first, fall back to network
- * Perfect for static assets
- */
-async function cacheFirstStrategy(request) {
-  const cache = await caches.open(CACHE_NAME);
-  
-  // Try cache first
-  const cachedResponse = await cache.match(request);
-  
-  if (cachedResponse) {
-    console.log('[SW] Serving from cache:', request.url);
-    return cachedResponse;
-  }
-  
-  // Cache miss, fetch from network
-  try {
-    console.log('[SW] Cache miss, fetching from network:', request.url);
-    const networkResponse = await fetch(request);
-    
-    // Cache the response for future use
-    if (networkResponse && networkResponse.status === 200) {
-      const responseToCache = networkResponse.clone();
-      cache.put(request, responseToCache).catch((error) => {
-        console.warn('[SW] Failed to cache response:', error);
-      });
-    }
-    
-    return networkResponse;
-  } catch {
-    console.error('[SW] Network request failed');
-    
-    // Return offline page if available
-    const offlinePage = await cache.match('/offline');
-    if (offlinePage) {
-      return offlinePage;
-    }
-    
-    return new Response('Offline - No cached version available', {
-      status: 503,
-      statusText: 'Service Unavailable'
-    });
-  }
-}
-
-// Handle messages from the client
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    console.log('[SW] Received SKIP_WAITING message');
-    self.skipWaiting();
-  }
-  
-  if (event.data && event.data.type === 'CACHE_URLS') {
-    console.log('[SW] Received request to cache URLs:', event.data.urls);
-    event.waitUntil(
-      caches.open(CACHE_NAME).then((cache) => {
-        return cache.addAll(event.data.urls);
-      })
-    );
-  }
-  
-  if (event.data && event.data.type === 'CLEAR_CACHE') {
-    console.log('[SW] Received request to clear cache');
-    event.waitUntil(
-      caches.keys().then((cacheNames) => {
-        return Promise.all(
-          cacheNames.map((cacheName) => caches.delete(cacheName))
-        );
+        // CRITICAL FIX: If both are null/undefined, we MUST return a valid Response or 
+        // the browser throws TypeError: Failed to convert value to 'Response'
+        return cached || networked || new Response('Not found', { status: 404, statusText: 'Offline and not cached' });
       })
     );
   }
 });
-
-// Background sync for failed requests (optional enhancement)
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'sync-emails') {
-    console.log('[SW] Background sync triggered');
-    event.waitUntil(syncEmails());
-  }
-});
-
-async function syncEmails() {
-  try {
-    // This would sync any pending email operations when back online
-    console.log('[SW] Syncing emails...');
-    // Implementation depends on your specific needs
-  } catch {
-    console.error('[SW] Sync failed');
-  }
-}
-
-console.log('[SW] Service Worker loaded');

@@ -4,13 +4,22 @@ import { useEffect } from 'react';
 
 export default function PWARegister() {
   useEffect(() => {
-    if (
-      typeof window !== 'undefined' &&
-      'serviceWorker' in navigator &&
-      process.env.NODE_ENV === 'production'
-    ) {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+
+    if (process.env.NODE_ENV === 'development') {
+      // In development, unregister ALL service workers to prevent ghost cache issues
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        if (registrations.length > 0) {
+          console.log(`[PWA] Development mode: Unregistering ${registrations.length} stale service workers...`);
+          for (const registration of registrations) {
+            registration.unregister();
+          }
+        }
+      });
+    } else {
+      // In production, register the service worker
       navigator.serviceWorker
-        .register('/sw.js', { scope: '/' })
+        .register('/sw.js')
         .then((registration) => {
           console.log('[PWA] Service Worker registered successfully:', registration.scope);
           
@@ -20,7 +29,7 @@ export default function PWARegister() {
             if (newWorker) {
               newWorker.addEventListener('statechange', () => {
                 if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                  console.log('[PWA] New service worker available, please refresh.');
+                  console.log('[PWA] New content is available; please refresh.');
                 }
               });
             }
@@ -29,15 +38,6 @@ export default function PWARegister() {
         .catch((error) => {
           console.error('[PWA] Service Worker registration failed:', error);
         });
-
-      // Clean up old service workers if any
-      navigator.serviceWorker.getRegistrations().then((registrations) => {
-        registrations.forEach((registration) => {
-          if (registration.active && !registration.active.scriptURL.includes('/sw.js')) {
-            registration.unregister();
-          }
-        });
-      });
     }
   }, []);
 

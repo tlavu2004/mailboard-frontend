@@ -223,21 +223,25 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
-  const handleFileChange = (info: { fileList: UploadFile[] }) => {
-    let newFileList = [...info.fileList];
-    // Limit to 10 files
-    newFileList = newFileList.slice(-10);
-    setFileList(newFileList);
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const customUploadRequest = ({ onSuccess }: any) => {
-    // Mock upload - in production, you'd upload to a server
-    setTimeout(() => {
-      if (onSuccess) {
-        onSuccess('ok');
+  const beforeUpload = (file: any) => {
+    const uploadFile: UploadFile = {
+      uid: file.uid || Math.random().toString(36).substring(7),
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      originFileObj: file,
+      status: 'done',
+    };
+    
+    setFileList((prev) => {
+      // Ngăn chặn trùng lặp khi chọn 1 tệp nhiều lần
+      if (prev.some((f) => f.name === file.name && f.size === file.size)) {
+        return prev;
       }
-    }, 0);
+      const newFiles = [...prev, uploadFile];
+      return newFiles.slice(-10); // Giới hạn 10 tệp
+    });
+    return false; // Ngăn chặn tiến trình upload tự động của Antd để tránh đè trạng thái
   };
 
   const getModalTitle = () => {
@@ -311,16 +315,28 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
               }}
             />
             <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
-              {!showCc && (
-                <Button type="link" size="small" onClick={() => setShowCc(true)}>
-                  Cc
-                </Button>
-              )}
-              {!showBcc && (
-                <Button type="link" size="small" onClick={() => setShowBcc(true)}>
-                  Bcc
-                </Button>
-              )}
+              <Button 
+                type="link" 
+                size="small" 
+                onClick={() => setShowCc(!showCc)}
+                style={{ 
+                  color: showCc ? '#1890ff' : '#8c8c8c',
+                  fontWeight: showCc ? '600' : 'normal'
+                }}
+              >
+                Cc
+              </Button>
+              <Button 
+                type="link" 
+                size="small" 
+                onClick={() => setShowBcc(!showBcc)}
+                style={{ 
+                  color: showBcc ? '#1890ff' : '#8c8c8c',
+                  fontWeight: showBcc ? '600' : 'normal'
+                }}
+              >
+                Bcc
+              </Button>
             </div>
           </div>
         </div>
@@ -334,14 +350,28 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
             alignItems: 'flex-start',
             minHeight: '48px'
           }}>
-            <Text style={{ 
+            <div style={{ 
               width: '60px', 
-              lineHeight: '32px',
-              color: '#8c8c8c',
-              fontSize: '14px'
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginRight: '8px'
             }}>
-              Cc
-            </Text>
+              <Text style={{ 
+                color: '#8c8c8c',
+                fontSize: '14px'
+              }}>
+                Cc
+              </Text>
+              <Button 
+                type="text" 
+                size="small" 
+                icon={<DeleteOutlined style={{ fontSize: '12px', color: '#ff4d4f' }} />} 
+                onClick={() => setShowCc(false)}
+                style={{ padding: 0 }}
+                title="Hide Cc"
+              />
+            </div>
             <div style={{ flex: 1, display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
               {ccEmails.map(email => (
                 <Tag
@@ -380,14 +410,28 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
             alignItems: 'flex-start',
             minHeight: '48px'
           }}>
-            <Text style={{ 
+            <div style={{ 
               width: '60px', 
-              lineHeight: '32px',
-              color: '#8c8c8c',
-              fontSize: '14px'
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginRight: '8px'
             }}>
-              Bcc
-            </Text>
+              <Text style={{ 
+                color: '#8c8c8c',
+                fontSize: '14px'
+              }}>
+                Bcc
+              </Text>
+              <Button 
+                type="text" 
+                size="small" 
+                icon={<DeleteOutlined style={{ fontSize: '12px', color: '#ff4d4f' }} />} 
+                onClick={() => setShowBcc(false)}
+                style={{ padding: 0 }}
+                title="Hide Bcc"
+              />
+            </div>
             <div style={{ flex: 1, display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
               {bccEmails.map(email => (
                 <Tag
@@ -581,8 +625,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
             </Button>
             <Upload
               fileList={fileList}
-              onChange={handleFileChange}
-              customRequest={customUploadRequest}
+              beforeUpload={beforeUpload}
               showUploadList={false}
               multiple
             >

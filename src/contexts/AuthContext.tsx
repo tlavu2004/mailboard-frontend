@@ -44,15 +44,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Check if user is authenticated on mount
   useEffect(() => {
-    // Aggressively kill any Service Workers to prevent caching issues
-    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then((registrations) => {
-        for (const registration of registrations) {
-          console.log('[Auth] Unregistering stale Service Worker');
-          registration.unregister();
-        }
-      });
-    }
 
     const checkAuth = async () => {
       console.log('[AuthContext] Initializing checkAuth...');
