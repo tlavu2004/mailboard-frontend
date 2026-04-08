@@ -22,30 +22,37 @@ export const useEmailNotifications = (
   useEffect(() => {
     if (!accountId) return;
 
-    // Construct WebSocket URL based on current API URL
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost/api/v1';
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    
-    let host = window.location.host;
-    try {
-      if (apiUrl.startsWith('http')) {
-        const url = new URL(apiUrl);
-        host = url.host;
-      } else {
-        // Relative API URL, use current window host
-        host = window.location.host;
+    // Prioritize direct WebSocket URL from environment (for production bypass)
+    const envWsUrl = process.env.NEXT_PUBLIC_WS_URL;
+    let wsUrl = '';
+
+    if (envWsUrl) {
+      // Use direct URL and append accountId
+      const separator = envWsUrl.includes('?') ? '&' : '?';
+      wsUrl = `${envWsUrl}${separator}accountId=${accountId}`;
+    } else {
+      // Construct WebSocket URL based on current API URL logic
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost/api/v1';
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      
+      let host = window.location.host;
+      try {
+        if (apiUrl.startsWith('http')) {
+          const url = new URL(apiUrl);
+          host = url.host;
+        } else {
+          host = window.location.host;
+        }
+      } catch (e) {
+        console.warn('[WebSocket] Failed to parse apiUrl, using window.location.host', e);
       }
-    } catch (e) {
-      console.warn('[WebSocket] Failed to parse apiUrl, using window.location.host', e);
-    }
 
-    // DEBUG: If on localhost and no port is specified, try assuming backend is on 8080
-    if (host === 'localhost' || host === '127.0.0.1') {
-      console.log('[WebSocket] Detected localhost without port, trying backend port 8080');
-      host = `${host}:8080`;
+      // DEBUG: If on localhost and no port is specified, try assuming backend is on 8080
+      if (host === 'localhost' || host === '127.0.0.1') {
+        host = `${host}:8080`;
+      }
+      wsUrl = `${protocol}//${host}/ws/notifications?accountId=${accountId}`;
     }
-
-    const wsUrl = `${protocol}//${host}/ws/notifications?accountId=${accountId}`;
 
     const connect = () => {
       // If we've failed too many times quickly, stop until an online event fires
