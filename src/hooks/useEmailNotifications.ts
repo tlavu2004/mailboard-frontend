@@ -23,6 +23,8 @@ export const useEmailNotifications = (
     if (!accountId) return;
 
     // Prioritize direct WebSocket URL from environment (for production bypass)
+    // IMPORTANT: WebSockets cannot be proxied through Vercel/Cloudflare effectively,
+    // they MUST point directly to the Render.com backend URL.
     const envWsUrl = process.env.NEXT_PUBLIC_WS_URL;
     let wsUrl = '';
 
@@ -35,24 +37,34 @@ export const useEmailNotifications = (
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost/api/v1';
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       
-      let host = window.location.host;
+      let host = 'localhost:8080'; // Default safety fallback
+      
       try {
         if (apiUrl.startsWith('http')) {
           const url = new URL(apiUrl);
           host = url.host;
-        } else {
-          host = window.location.host;
+        } else if (typeof window !== 'undefined') {
+          // If we are on Vercel (tlavu-mailboard.vercel.app), we CANNOT use window.location.host
+          // because Vercel doesn't support WebSocket upgrades.
+          // We must point back to Render.
+          if (window.location.hostname.includes('vercel.app')) {
+            host = 'mailboard-backend.onrender.com';
+          } else {
+            host = window.location.host;
+          }
         }
       } catch (e) {
         console.warn('[WebSocket] Failed to parse apiUrl, using window.location.host', e);
+        if (typeof window !== 'undefined') host = window.location.host;
       }
 
       // DEBUG: If on localhost and no port is specified, try assuming backend is on 8080
-      if (host === 'localhost' || host === '127.0.0.1') {
+      if ((host === 'localhost' || host === '127.0.0.1') && !host.includes(':')) {
         host = `${host}:8080`;
       }
       wsUrl = `${protocol}//${host}/ws/notifications?accountId=${accountId}`;
     }
+
 
     const connect = () => {
       // If we've failed too many times quickly, stop until an online event fires
