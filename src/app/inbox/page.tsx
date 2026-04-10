@@ -70,6 +70,8 @@ export default function InboxPage() {
   const [kanbanSettingsOpen, setKanbanSettingsOpen] = useState(false);
   const [editingColumnId, setEditingColumnId] = useState<string | undefined>(undefined);
   const [autoAddColumn, setAutoAddColumn] = useState(false);
+  const [listWidth, setListWidth] = useState(400);
+  const [isResizing, setIsResizing] = useState(false);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -363,7 +365,38 @@ export default function InboxPage() {
     }
   };
 
-  // Handle real-time notifications
+  // Resizing logic
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      
+      // Calculate new width: mouse postion minus sidebar width (variable)
+      // Sidebar width is 260px on desktop
+      const newWidth = e.clientX - 260;
+      if (newWidth > 250 && newWidth < 800) {
+        setListWidth(newWidth);
+      }
+    };
+
+    const stopResizing = () => {
+      setIsResizing(false);
+      document.body.style.cursor = 'default';
+    };
+
+    if (isResizing) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', stopResizing);
+      document.body.style.cursor = 'col-resize';
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', stopResizing);
+    };
+  }, [isResizing]);
+
+  // Handlers
+  // real-time notifications
   const handleNotification = useCallback((msg: { type: string; message: string }) => {
     if (msg.type === 'NEW_EMAILS') {
       message.info('New emails received! Syncing...');
@@ -899,8 +932,8 @@ export default function InboxPage() {
                   <div 
                     className={`flex flex-col bg-white border-r border-gray-100 ${showMobileDetail ? (viewMode === 'list' ? 'hidden-mobile' : 'hidden') : 'flex w-full'}`}
                     style={{ 
-                      width: viewMode === 'list' ? (selectedEmail ? '380px' : '100%') : '100%',
-                      transition: 'width 0.3s ease'
+                      width: viewMode === 'list' ? (selectedEmail ? `${listWidth}px` : '100%') : '100%',
+                      transition: isResizing ? 'none' : 'width 0.3s ease'
                     }}
                   >
                     {viewMode === 'list' ? (
@@ -948,6 +981,17 @@ export default function InboxPage() {
                     )}
                   </div>
 
+                  {/* Resizer Handle */}
+                  {viewMode === 'list' && selectedEmail && (
+                    <div 
+                      className={`resize-handle hidden-mobile ${isResizing ? 'active' : ''}`}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setIsResizing(true);
+                      }}
+                    />
+                  )}
+
                   {/* Right Column: Detail */}
                   {selectedEmail && (
                     <div className={`flex-1 bg-white overflow-hidden ${!showMobileDetail ? (viewMode === 'list' ? 'hidden-mobile flex' : 'hidden') : 'absolute inset-0 z-10 flex md:relative md:flex'}`}>
@@ -966,6 +1010,7 @@ export default function InboxPage() {
                         loadingSummary={loadingSummary}
                         onDownloadAttachment={handleDownloadAttachment}
                         showMobileDetail={showMobileDetail}
+                        showBackButton={viewMode === 'kanban' || showMobileDetail}
                       />
                     </div>
                   )}

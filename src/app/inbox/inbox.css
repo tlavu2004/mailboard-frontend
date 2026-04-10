@@ -107,3 +107,32 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Resize Handle */
+.resize-handle {
+  width: 4px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.2s, width 0.2s;
+  position: relative;
+  z-index: 5;
+  margin: 0 -2px;
+}
+
+.resize-handle:hover, .resize-handle.active {
+  background: #667eea;
+  width: 6px;
+  margin: 0 -3px;
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  background: rgba(0, 0, 0, 0.04);
+}
