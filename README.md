@@ -1,408 +1,246 @@
-# AI Email Box - Frontend
+# MailBoard - Modern Frontend Interface
 
-A modern, secure email dashboard built with Next.js, React, TypeScript, and Ant Design.
+MailBoard Frontend is a state-of-the-art email management interface built with **Next.js 16**, **React 19**, **TypeScript**, and **Ant Design 5**. It provides a seamless, high-performance experience for managing emails, organizing them on a **Kanban Board**, and leveraging **AI-powered search and summarization**.
 
-## 🚀 Features
+> [!IMPORTANT]
+> This is the **Frontend** repository. It requires the [MailBoard Backend](https://github.com/tlavu2004/mailboard-backend) to be running to function correctly.
 
-- ✅ **Email/Password Authentication** - Secure login with validation
-- ✅ **Google OAuth Sign-In** - One-click Google authentication
-- ✅ **JWT Token Management** - Access & refresh token handling with automatic refresh
-- ✅ **3-Column Email Dashboard** - Mailboxes, Email List, Email Detail
-- ✅ **Responsive Design** - Mobile-friendly with collapsible columns
-- ✅ **Protected Routes** - Authentication-based route guards
-- ✅ **Ant Design UI** - Modern, polished interface with icons
-- ✅ **Mock Email API Integration** - Realistic email data
+---
 
-## 🛠 Tech Stack
+## Key Features
 
-- **Next.js 15** - React framework with App Router
-- **React 19** - UI library
-- **TypeScript** - Type safety
-- **Ant Design** - UI component library
-- **Axios** - HTTP client with interceptors
-- **React OAuth Google** - Google Sign-In
-- **Context API** - State management
+### Unified Sidebar Layout
+A stable, premium layout architecture that eliminates component shifting during window resizing:
+- **Global Sidebar**: Logo, Compose button, Mailbox navigation, View Switcher (List/Kanban), and User Profile — all in a single, consistent vertical sidebar.
+- **Streamlined Toolbar**: Minimalist top bar with context title, search input, and sync status.
+- **Responsive Drawer**: On mobile, the sidebar collapses into a hamburger-triggered Drawer, maximizing content space.
 
-## 📁 Project Structure
+### Dual View Modes
+Switch seamlessly between two distinct email views:
+- **List View**: Classic 3-column layout (Sidebar → Email List → Email Detail) with sorting, filtering, and pagination.
+- **Kanban Board**: Drag-and-drop email triage with customizable columns, color coding, Gmail label mapping, and a full Settings modal for column management.
+
+### AI-Powered Intelligence
+- **Email Summarization**: One-click AI summaries on email detail cards, powered by Gemini with an extractive fallback.
+- **Semantic Search**: Toggle between traditional text search and AI-powered conceptual search with relevance scoring.
+- **Auto-Suggestions**: Real-time type-ahead dropdown with contact and subject suggestions as you type.
+- **Background Embeddings**: Automatic periodic embedding generation (every 2 minutes) for semantic search readiness.
+
+### Compose & Email Actions
+Full email composition with rich functionality:
+- **Compose Modal**: To/Cc/Bcc tag inputs, subject, rich-text body, and file attachments (up to 10, with preview and size display).
+- **Reply & Forward**: Pre-filled fields with Gmail-style quoted content toggle.
+- **Mark Read/Unread, Star, Delete**: Optimistic UI updates with instant visual feedback.
+- **Download Attachments**: Blob-based file downloads via authenticated API calls.
+
+### Real-Time & Offline
+- **WebSocket Notifications**: Live email notifications via `useEmailNotifications` hook with auto-reconnect.
+- **Multi-Tab Logout Sync**: StorageEvent-based synchronization — logout in one tab instantly logs out all other tabs.
+- **PWA & Offline Caching**: Integrated `next-pwa` for service worker registration and offline capability.
+- **Keyboard Shortcuts**: Professional hotkey navigation via `useKeyboardShortcuts` hook.
+
+### Email Statistics
+- Dedicated Statistics page with aggregated metrics (total, unread, starred, sent) visualized with interactive charts.
+
+---
+
+## Tech Stack
+
+| Category | Technology |
+| :--- | :--- |
+| **Framework** | [Next.js 16](https://nextjs.org/) (App Router) |
+| **UI Library** | [React 19](https://react.dev/) |
+| **Language** | [TypeScript](https://www.typescriptlang.org/) |
+| **Component Library** | [Ant Design 5](https://ant.design/) |
+| **Styling** | [Tailwind CSS 4](https://tailwindcss.com/) + Vanilla CSS |
+| **Drag & Drop** | [@dnd-kit](https://dndkit.com/) (core + sortable) |
+| **Icons** | [Ant Design Icons](https://ant.design/components/icon) + [Lucide React](https://lucide.dev/) |
+| **HTTP Client** | [Axios](https://axios-http.com/) (with request/response interceptors) |
+| **Date Handling** | [Day.js](https://day.js.org/) |
+| **State Management** | React Context API |
+| **Routing** | Next.js App Router |
+
+---
+
+## Project Structure
 
 ```
-aiemailbox-fe/
+mailboard-frontend/
 ├── src/
 │   ├── app/
-│   │   ├── layout.tsx        # Root layout with providers
-│   │   ├── page.tsx          # Home page (redirects)
-│   │   ├── login/
-│   │   │   └── page.tsx      # Login/Signup page
-│   │   └── inbox/
-│   │       ├── page.tsx      # Email dashboard
-│   │       └── inbox.css     # Dashboard styles
+│   │   ├── layout.tsx           # Root layout with providers (Auth, Ant Design, Google OAuth)
+│   │   ├── page.tsx             # Home page (redirects to /inbox)
+│   │   ├── login/page.tsx       # Google OAuth login page
+│   │   ├── auth/callback/       # OAuth callback handler
+│   │   ├── inbox/
+│   │   │   ├── page.tsx         # Main dashboard (Sidebar + List/Kanban + Detail)
+│   │   │   └── inbox.css        # Dashboard layout styles
+│   │   ├── statistics/page.tsx  # Email statistics dashboard
+│   │   └── ~offline/page.tsx    # PWA offline fallback page
 │   ├── components/
-│   │   └── ProtectedRoute.tsx # Route guard component
+│   │   ├── ComposeModal.tsx     # Full email composition (604 lines, 21KB)
+│   │   ├── ProtectedRoute.tsx   # Authentication route guard
+│   │   ├── OfflineIndicator.tsx # Offline status banner
+│   │   ├── PWARegister.tsx      # Service worker registration
+│   │   └── statistics/          # Statistics visualization components
 │   ├── contexts/
-│   │   └── AuthContext.tsx   # Authentication context
+│   │   └── AuthContext.tsx      # Authentication state, login/logout, multi-tab sync
+│   ├── hooks/
+│   │   ├── useEmailNotifications.ts  # WebSocket real-time notifications
+│   │   ├── useKeyboardShortcuts.ts   # Keyboard navigation hotkeys
+│   │   └── useOnlineStatus.ts        # Online/offline detection
 │   ├── services/
-│   │   ├── api.ts            # Axios client with interceptors
-│   │   ├── auth.ts           # Auth API calls
-│   │   └── email.ts          # Email API calls
+│   │   ├── api.ts               # Axios client with JWT interceptors & auto-refresh
+│   │   ├── auth.ts              # Authentication API (login, refresh, logout)
+│   │   ├── email.ts             # Email CRUD, sync, search, attachments
+│   │   ├── kanbanService.ts     # Kanban column CRUD, email status updates
+│   │   ├── searchService.ts     # Fuzzy, semantic search & suggestions
+│   │   └── statisticsService.ts # Email statistics API
 │   ├── types/
-│   │   ├── auth.ts           # Auth types
-│   │   └── email.ts          # Email types
-│   └── utils/                # Utility functions
-├── public/                   # Static assets
-├── .env                      # Environment variables
-├── .env.prod                 # Production environment variables
-├── package.json
-└── tsconfig.json
+│   │   ├── auth.ts              # Auth type definitions
+│   │   └── email.ts             # Email, Mailbox, Kanban type definitions
+│   └── mocks/                   # Mock API data for development
+├── public/                      # Static assets, PWA manifest, icons
+├── nginx/                       # Nginx reverse proxy config (Docker)
+├── Dockerfile                   # Multi-stage Next.js build
+├── docker-compose.yml           # Docker Compose for containerized deployment
+├── vercel.json                  # Vercel deployment configuration
+├── .env.example                 # Environment template
+└── package.json
 ```
 
-## 🚦 Getting Started
+---
+
+## Getting Started
 
 ### Prerequisites
+- **Node.js 18+**
+- **npm** or **yarn**
+- Backend API running (see [mailboard-backend](https://github.com/tlavu2004/mailboard-backend))
 
-- Node.js 18+ 
-- npm or yarn
-- Backend API running on `http://localhost:8080`
-
-### 1. Install Dependencies
+### Installation
 
 ```bash
-cd aiemailbox-fe
+# 1. Clone the repository
+git clone https://github.com/tlavu2004/mailboard-frontend.git
+cd mailboard-frontend
+
+# 2. Install dependencies
 npm install
+
+# 3. Configure environment
+cp .env.example .env
 ```
 
-### 2. Configure Environment Variables
+### Environment Configuration
 
-Create `.env` file:
+Update `.env` with your Backend API URL and Google OAuth Client ID:
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:8080/api
+NEXT_PUBLIC_API_URL=http://localhost:8080/api/v1
 NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-google-oauth-client-id
+NEXT_PUBLIC_WS_URL=ws://localhost:8080/ws/notifications
 ```
 
 **Getting Google OAuth Client ID:**
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select existing
-3. Enable Google+ API
-4. Create OAuth 2.0 credentials
+2. Create or select a project
+3. Enable the Gmail API
+4. Create OAuth 2.0 credentials (Web Application)
 5. Add authorized origins: `http://localhost:3000`
-6. Copy Client ID to `.env`
+6. Copy the Client ID to `.env`
 
-### 3. Run Development Server
+### Running Locally
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+The application will be available at `http://localhost:3000`.
 
-### 4. Build for Production
+---
 
-```bash
-npm run build
-npm start
-```
-
-## Docker Setup (Recommended)
-
-### Prerequisites
-
-- Docker
-- Docker Compose
+## Docker Setup
 
 ### Quick Start with Docker Compose
 
-The easiest way to run the frontend is using the included `docker-compose.yml`:
-
 ```bash
-# 1. Navigate to the frontend directory
-cd AiEmailbox-FE
-
-# 2. Configure environment variables
-# Edit the .env file with your settings
+# 1. Configure environment
 cp .env.example .env
 
-# 3. Start the frontend
-docker-compose up -d
+# 2. Start the frontend
+docker compose up -d
 
-# 4. Check logs
-docker-compose logs -f
-
-# 5. The frontend will be available at http://localhost:3000
+# 3. The frontend will be available at http://localhost:3000
 ```
-
-### Docker Compose Service
-
-The `docker-compose.yml` includes:
-
-- **Frontend Application** (`aiemailbox-frontend-next`)
-  - Port: 3000
-  - Built with Next.js standalone output
-  - Auto-restart enabled
-  - Environment variables from `.env` file
 
 ### Useful Commands
 
 ```bash
-# Start service in background
-docker-compose up -d
+# Start in background
+docker compose up -d
+
+# Rebuild after code changes
+docker compose up -d --build
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Stop service
-docker-compose down
-
-# Rebuild image and restart (after code changes)
-docker-compose up -d --build
-
-# Check service status
-docker-compose ps
-
-# View container info
-docker inspect aiemailbox-frontend-next
-
-# Access container shell
-docker exec -it aiemailbox-frontend-next sh
+docker compose down
 ```
-
-### Environment Variables for Docker
-
-Configure the `.env` file in the AiEmailbox-FE directory:
-
-```env
-NEXT_PUBLIC_API_URL=http://localhost:8080/api
-NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-google-oauth-client-id
-NODE_ENV=production
-PORT=3000
-```
-
-## �🔐 Authentication Flow
-
-### Login Process
-
-1. User enters email/password or clicks "Sign in with Google"
-2. Frontend sends credentials to backend API
-3. Backend validates and returns:
-   - `accessToken` (15min lifetime)
-   - `refreshToken` (7 days lifetime)
-   - User profile
-4. Frontend stores tokens:
-   - Access token → In-memory variable
-   - Refresh token → localStorage
-5. User redirected to `/inbox`
-
-### Token Management
-
-#### Access Token (In-Memory)
-```typescript
-// Stored in JavaScript variable
-let accessToken: string | null = null;
-
-// Attached to every API request
-config.headers.Authorization = `Bearer ${accessToken}`;
-```
-
-**Why in-memory?**
-- ✅ Protected from XSS attacks
-- ✅ Automatically cleared on page refresh
-- ❌ Requires refresh token to restore session
-
-#### Refresh Token (LocalStorage)
-```typescript
-// Stored in localStorage
-localStorage.setItem('refreshToken', token);
-
-// Used to get new access token
-const newAccessToken = await refreshToken(refreshToken);
-```
-
-**Why localStorage?**
-- ✅ Persists across page refreshes
-- ✅ Enables "remember me" functionality
-- ⚠️ Vulnerable to XSS (mitigated by short access token lifetime)
-
-### Automatic Token Refresh
-
-The API client automatically refreshes expired access tokens:
-
-```typescript
-// axios interceptor handles 401 responses
-if (error.response?.status === 401) {
-  // Prevent multiple simultaneous refresh requests
-  if (!isRefreshing) {
-    isRefreshing = true;
-    
-    // Request new access token
-    const { accessToken, refreshToken } = await refresh();
-    
-    // Retry original request with new token
-    return apiClient(originalRequest);
-  }
-}
-```
-
-**Features:**
-- ✅ Concurrent request handling (queues requests during refresh)
-- ✅ Token rotation (new refresh token on each refresh)
-- ✅ Automatic logout on refresh failure
-- ✅ Seamless user experience (no interruption)
-
-### Security Considerations
-
-**Token Storage Trade-offs:**
-
-| Storage | Security | Persistence | XSS Risk | CSRF Risk |
-|---------|----------|-------------|----------|-----------|
-| In-Memory | ✅ High | ❌ Low | ✅ Protected | N/A |
-| localStorage | ⚠️ Medium | ✅ High | ❌ Vulnerable | N/A |
-| HttpOnly Cookie | ✅ High | ✅ High | ✅ Protected | ⚠️ Needs CSRF |
-
-**Why Our Approach:**
-1. Short-lived access tokens (15min) minimize XSS impact
-2. Refresh tokens enable persistent sessions
-3. Token rotation prevents replay attacks
-4. Automatic logout on refresh failure
-5. Production requires HTTPS
-
-**Production Recommendations:**
-- Use HTTPS only (prevents MITM attacks)
-- Implement Content Security Policy (CSP)
-- Add rate limiting on auth endpoints
-- Consider HttpOnly cookies for refresh tokens
-- Implement token revocation/blacklist
-- Use secure headers (Helmet.js)
-
-## 📧 Email Dashboard
-
-### Three-Column Layout
-
-#### Column 1: Mailboxes (Left, ~20%)
-- Inbox (with unread count badge)
-- Starred
-- Sent
-- Drafts
-- Archive
-- Trash
-- Custom folders
-
-#### Column 2: Email List (Center, ~40%)
-- Email sender with avatar
-- Subject line
-- Preview text (truncated)
-- Timestamp (smart formatting)
-- Star indicator
-- Attachment indicator
-- Unread styling
-
-#### Column 3: Email Detail (Right, ~40%)
-- Full email headers (from, to, cc, date)
-- Email body (HTML rendering)
-- Attachments with download buttons
-- Action buttons: Reply, Reply All, Forward, Star, Delete
-- Empty state when no email selected
-
-### Responsive Behavior
-
-**Desktop (>992px):**
-- Three columns side-by-side
-- Persistent mailbox sidebar
-- Email list and detail visible
-
-**Mobile (<992px):**
-- Single column view
-- Mailbox → Email List → Email Detail
-- Back button navigation
-- Collapsible sidebar
-
-## 🎨 UI Components (Ant Design)
-
-### Key Components Used
-
-- `Layout` - Overall page structure
-- `Menu` - Mailbox navigation
-- `List` - Email list
-- `Card` - Email items and detail container
-- `Button` - Actions and navigation
-- `Badge` - Unread counts
-- `Avatar` - User/sender avatars
-- `Spin` - Loading indicators
-- `Empty` - Empty states
-- `Form` - Authentication forms
-- `Input` - Text fields
-- `Typography` - Text elements
-
-### Icons (@ant-design/icons)
-
-- `InboxOutlined`, `StarOutlined`, `SendOutlined`
-- `MailOutlined`, `LockOutlined`, `UserOutlined`
-- `PaperClipOutlined`, `DeleteOutlined`
-- `ReloadOutlined`, `LogoutOutlined`
-
-## 🚀 Deployment
-
-### Vercel (Recommended)
-
-1. Push code to GitHub
-2. Import project in Vercel
-3. Add environment variables:
-   ```
-   NEXT_PUBLIC_API_URL=https://your-backend-url.com/api
-   NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-google-client-id
-   ```
-4. Deploy automatically on push
-
-**Vercel CLI:**
-```bash
-npm i -g vercel
-vercel login
-vercel
-```
-
-## 🧪 Testing
-
-### Manual Testing Checklist
-
-**Authentication:**
-- [ ] Email signup with validation
-- [ ] Email login
-- [ ] Google Sign-In
-- [ ] Token refresh on expiration
-- [ ] Logout clears tokens
-- [ ] Protected routes redirect to login
-- [ ] Invalid credentials show error
-
-**Email Dashboard:**
-- [ ] Load mailboxes on login
-- [ ] Click mailbox loads emails
-- [ ] Click email shows detail
-- [ ] Refresh button updates list
-- [ ] Responsive layout on mobile
-- [ ] Back button on mobile
-- [ ] Empty states display correctly
-
-## 🐛 Troubleshooting
-
-### Issue: "Failed to load mailboxes"
-- **Solution:** Check backend is running on correct port
-- **Check:** API_URL in `.env` matches backend
-
-### Issue: Google Sign-In not working
-- **Solution:** Verify Google Client ID is correct
-- **Check:** Authorized origins include your domain
-- **Check:** Google+ API is enabled
-
-### Issue: Token refresh fails
-- **Solution:** Clear localStorage and re-login
-- **Check:** Refresh token hasn't expired (7 days)
-
-### Issue: CORS errors
-- **Solution:** Update backend CORS to allow frontend origin
-- **Check:** `FRONTEND_URL` in backend `.env`
-
-## 📄 License
-
-MIT
 
 ---
 
-**Built with ❤️ for the Web Development Course**
+## Authentication Flow
+
+### Token Management Strategy
+
+| Storage | Token | Security | Persistence |
+| :--- | :--- | :--- | :--- |
+| **In-Memory + Backup** | Access Token | XSS-protected (primary in-memory) | Recovered from localStorage/cookie on reload |
+| **localStorage** | Refresh Token | Mitigated by short access TTL + token rotation | Persists across refreshes |
+| **Cookie** | Both (backup) | Fallback recovery | Cross-tab availability |
+
+### Automatic Token Refresh
+
+The Axios interceptor handles 401 responses transparently:
+1. Queues concurrent requests during refresh (prevents race conditions).
+2. Rotates refresh tokens on each refresh cycle.
+3. Automatically redirects to `/login` on refresh failure.
+
+---
+
+## Deployment
+
+### Vercel (Recommended)
+
+This project is optimized for **Vercel**. Simply connect your GitHub repository and set the environment variables in the Vercel Dashboard:
+
+```env
+NEXT_PUBLIC_API_URL=https://your-backend.onrender.com/api/v1
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-google-client-id
+NEXT_PUBLIC_WS_URL=wss://your-backend.onrender.com/ws/notifications
+```
+
+The included `vercel.json` handles API proxy rewrites and caching headers automatically.
+
+### Docker (Self-Hosted)
+
+Use the included multi-stage `Dockerfile` and `docker-compose.yml` with the Nginx reverse proxy for self-hosted deployments.
+
+---
+
+## Authors
+
+| Student ID | Full Name | Github |
+| :--- | :--- | :--- |
+| **22120303** | Mai Xuân Quý | [m-xuanquy](https://github.com/m-xuanquy) |
+| **22120430** | Lê Hoàng Việt | [Keruedu](https://github.com/Keruedu) |
+| **22120443** | Trương Lê Anh Vũ | [tlavu2004](https://github.com/tlavu2004) |
+
+---
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
