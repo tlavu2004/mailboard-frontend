@@ -73,13 +73,24 @@
   .inbox-header {
     padding: 0 16px !important;
   }
+}
 
-  /* Reset order hacks from old design */
-  .header-search, .header-title, .header-actions {
-    order: unset !important;
-    width: auto !important;
-    margin: 0 !important;
+@media (min-width: 993px) {
+  .hidden-desktop {
+    display: none !important;
   }
+}
+
+/* List Item Spacing */
+.mail-item-card {
+  margin-bottom: 8px !important;
+  border: 1px solid #f1f5f9 !important;
+  border-radius: 10px !important;
+}
+
+.mail-item-card:hover {
+  border-color: #667eea !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
 }
 
 /* Email content card */
