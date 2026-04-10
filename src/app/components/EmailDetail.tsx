@@ -29,6 +29,7 @@ interface EmailDetailProps {
   onSnooze?: (emailId: string, until: string) => void;
   onDownloadAttachment: (emailId: string, attachmentId: string, filename: string) => void;
   showMobileDetail: boolean;
+  showBackButton?: boolean;
   className?: string;
   style?: React.CSSProperties;
 }
@@ -46,6 +47,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
   onSnooze,
   onDownloadAttachment,
   showMobileDetail,
+  showBackButton,
   className,
   style,
 }) => {
@@ -91,7 +93,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
 
   return (
     <div className={className} style={style}>
-      {showMobileDetail && (
+      {showBackButton && (
         <Button
           icon={<ArrowLeftOutlined />}
           onClick={onBack}
