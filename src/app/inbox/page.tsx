@@ -266,8 +266,8 @@ export default function InboxPage() {
   // Auto-generate embeddings periodically (every 2 minutes)
   useEffect(() => {
     const generate = () => {
-      // If navigator says offline, skip immediately
-      if (!navigator.onLine) return;
+      // If navigator says offline OR user is not logged in, skip immediately
+      if (!navigator.onLine || !user) return;
       
       searchService.generateEmbeddings(50)
         .then(result => {
@@ -722,297 +722,265 @@ export default function InboxPage() {
   return (
     <ProtectedRoute>
       <Layout style={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <Header className="inbox-header" style={{
-          background: '#fff',
-          padding: '2px 16px', // Increased padding for 2 rows
-          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          zIndex: 1,
-          height: 'auto',
-          minHeight: '50px',
-          flexWrap: 'wrap',
-          gap: '12px', // Add gap for wrapping
-          flexShrink: 0
-        }}>
-          <div className="header-title" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <button
-              className="mobile-menu-btn"
+        {/* TOP TOOLBAR - Minimalist & Stable */}
+        <Header className="top-toolbar">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Button
+              className="lg:hidden"
+              icon={<MenuOutlined />}
               onClick={() => setMobileDrawerOpen(true)}
-              style={{ padding: '8px', border: 'none', background: 'transparent', cursor: 'pointer', display: 'none' }}
-            >
-              <MenuOutlined style={{ fontSize: '20px', color: '#667eea' }} />
-            </button>
-            <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl shadow text-white" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
-                <path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>
-              </svg>
-            </div>
-            <Title level={4} style={{ margin: 0, whiteSpace: 'nowrap' }}>AI Email Box</Title>
+              type="text"
+            />
+            <Title level={4} style={{ margin: 0, color: '#1a1a1a', letterSpacing: '-0.5px' }}>
+              {isSearching ? 'Search Results' : (mailboxes.find(m => m.id === selectedMailbox)?.name || 'Inboxes')}
+            </Title>
           </div>
 
-          {/* Search Bar - will order change on mobile via CSS */}
-          {/* Search Bar */}
-          <SearchInput 
-            onSearch={handleSearch} 
-            defaultValue={searchQuery} 
-            ref={searchInputRef}
-          />
+          <div style={{ flex: 1, maxWidth: '600px', margin: '0 24px' }}>
+            {/* Search Bar Refactored for Stability */}
+            <SearchInput 
+              onSearch={handleSearch} 
+              defaultValue={searchQuery} 
+              ref={searchInputRef}
+            />
+          </div>
 
-          <div className="header-actions">
-            <Space>
-              <div className="flex bg-gray-100 p-1 rounded-lg mr-2">
-                <button
-                  onClick={() => handleViewToggle('list')}
-                  className={`px-3 py-1 rounded-md text-sm font-medium border-0 cursor-pointer transition-all flex items-center ${viewMode === 'list' ? 'bg-white text-gray-800 shadow-sm' : 'bg-transparent text-gray-500 hover:text-gray-700'}`}
-                >
-                  <BarsOutlined className="mr-1" />
-                  <span className="view-mode-text">List</span>
-                </button>
-                <button
-                  onClick={() => handleViewToggle('kanban')}
-                  className={`px-3 py-1 rounded-md text-sm font-medium border-0 cursor-pointer transition-all flex items-center ${viewMode === 'kanban' ? 'bg-white text-gray-800 shadow-sm' : 'bg-transparent text-gray-500 hover:text-gray-700'}`}
-                >
-                  <AppstoreOutlined className="mr-1" />
-                  <span className="view-mode-text">Kanban</span>
-                </button>
-              </div>
-
-              <Dropdown
-                menu={{
-                  items: [
-                    {
-                      key: 'user-info',
-                      label: (
-                        <div style={{ padding: '8px 0' }}>
-                          <Text strong>{user?.name || 'User'}</Text>
-                          <br />
-                          <Text type="secondary" style={{ fontSize: '12px' }}>{user?.email}</Text>
-                        </div>
-                      ),
-                      disabled: true,
-                    },
-                    { type: 'divider' },
-                    {
-                      key: 'statistics',
-                      icon: <PieChartOutlined />,
-                      label: 'Statistics',
-                      onClick: () => window.location.href = '/statistics',
-                    },
-                    { type: 'divider' },
-                    {
-                      key: 'logout',
-                      icon: <LogoutOutlined />,
-                      label: 'Logout',
-                      danger: true,
-                      onClick: logout,
-                    },
-                  ],
-                }}
-                trigger={['click']}
-                placement="bottomRight"
-              >
-                <Avatar
-                  style={{ backgroundColor: '#667eea', cursor: 'pointer' }}
-                  size="default"
-                >
-                  {user?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
-                </Avatar>
-              </Dropdown>
-            </Space>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Badge dot={syncLoading} offset={[-2, 6]}>
+              <Button 
+                icon={<CloudSyncOutlined />} 
+                onClick={handleSync} 
+                loading={syncLoading}
+                type="text"
+              />
+            </Badge>
           </div>
         </Header>
 
-        <div className="px-4 pt-4 bg-white">
-          <FilterBar 
-            filters={filters}
-            sortMode={sortMode}
-            onFilterChange={setFilters}
-            onSortChange={setSortMode}
-            onSync={handleSync}
-            onRepair={handleRepair}
-            onRefresh={handleRefresh}
-            onSettings={viewMode === 'kanban' ? () => setKanbanSettingsOpen(true) : undefined}
-            syncLoading={syncLoading}
-            refreshLoading={emailsLoading}
-          />
-        </div>
 
-        {isSearching ? (
-          <Content style={{ flex: 1, overflow: 'hidden' }}>
-            <SearchResults
-              results={searchResults}
-              loading={searchLoading}
-              onSelect={handleEmailSelect}
-              onClose={handleClearSearch}
-              searchQuery={searchQuery}
-              onLoadMore={handleLoadMoreSearch}
-              loadingMore={loadingMore}
-              hasMore={!!nextPageToken}
-              totalEstimate={totalEstimate}
-              scores={searchScores}
-              searchMode={searchMode}
-            />
-            {/* Reusing the Modal for details if an item is clicked from search results */}
-            <Modal
-              title={null}
-              footer={null}
-              open={!!selectedEmail}
-              onCancel={() => setSelectedEmail(null)} // Close detail only
-              width={1000}
-              centered
-              destroyOnHidden
-              styles={{ body: { padding: 0, height: '80vh', overflow: 'hidden' } }}
-            >
-              <div className="h-full overflow-y-auto [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                {selectedEmail && (
-                  <EmailDetail
-                    email={selectedEmail}
-                    onBack={() => setSelectedEmail(null)}
-                    onStar={handleStar}
-                    onDelete={(e, email) => {
-                      handleDelete(e, email);
-                      setSelectedEmail(null);
-                      // Update search results? Ideally yes, but tricky without re-search
-                      setSearchResults(prev => prev.filter(p => p.id !== email.id));
-                    }}
-                    onReply={handleReply}
-                    onForward={handleForward}
-                    onSummarize={handleSummarize}
-                    loadingSummary={loadingSummary}
-                    onDownloadAttachment={handleDownloadAttachment}
-                    showMobileDetail={false}
-                  />
-                )}
+        <Layout className="main-layout" style={{ flex: 1, overflow: 'hidden' }}>
+          {/* GLOBAL LEFT SIDEBAR - Unified for all views */}
+          <Sider
+            width={260}
+            theme="light"
+            breakpoint="lg"
+            collapsedWidth="0"
+            className="mailbox-sider hidden-mobile"
+            trigger={null}
+          >
+            <div className="sidebar-container">
+              <div 
+                className="sidebar-header cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => handleMailboxSelect('INBOX')}
+              >
+                <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl shadow text-white" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+                    <path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>
+                  </svg>
+                </div>
+                <Title level={4} style={{ margin: 0 }}>MailBoard</Title>
               </div>
-            </Modal>
-          </Content>
-        ) : viewMode === 'kanban' ? (
-          <Content style={{ flex: 1, overflow: 'hidden', background: '#fff' }}>
-            <KanbanBoard 
-              onCardClick={handleKanbanCardClick} 
-              filters={filters}
-              sortMode={sortMode}
-              accountId={accountId}
-              settingsOpen={kanbanSettingsOpen}
-              onSettingsClose={() => {
-                setKanbanSettingsOpen(false);
-                setEditingColumnId(undefined);
-                setAutoAddColumn(false);
-              }}
-              onOpenSettingsWithColumn={(columnId) => {
-                setEditingColumnId(columnId);
-                setKanbanSettingsOpen(true);
-              }}
-              onAddColumnClick={() => {
-                setKanbanSettingsOpen(true);
-                setAutoAddColumn(true);
-              }}
-              initialSelectedColumnId={editingColumnId}
-              triggerAddOnOpen={autoAddColumn}
-            />
 
-            {/* Modal for Kanban Detail View */}
-            <Modal
-              title={null}
-              footer={null}
-              open={!!selectedEmail}
-              onCancel={handleKanbanModalClose}
-              width={1000} // Wide modal to mimic list view detail
-              centered
-              destroyOnHidden
-              styles={{ body: { padding: 0, height: '80vh', overflow: 'hidden' } }}
-            >
-              <div className="h-full overflow-y-auto [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                {selectedEmail && (
-                  <EmailDetail
-                    email={selectedEmail}
-                    onBack={handleKanbanModalClose} // "Back" button also acts as close
-                    onStar={handleStar}
-                    onDelete={(e, email) => {
-                      handleDelete(e, email);
-                      handleKanbanModalClose(); // Close modal on delete
+              {/* Sidebar Content: Compose & Mailboxes */}
+              <div className="sidebar-content">
+                <div style={{ padding: '0 8px 16px 8px' }}>
+                  <Button
+                    type="primary"
+                    icon={<EditOutlined />}
+                    block
+                    size="large"
+                    onClick={() => setIsComposeVisible(true)}
+                    style={{ borderRadius: '12px', height: '48px', boxShadow: '0 4px 12px rgba(102, 126, 234, 0.25)' }}
+                  >
+                    Compose
+                  </Button>
+                </div>
+                <Menu
+                  mode="inline"
+                  selectedKeys={[selectedMailbox]}
+                  style={{ border: 'none' }}
+                  items={mailboxes.map((mailbox) => ({
+                    key: mailbox.id,
+                    icon: iconMap[mailbox.icon] || <FolderOutlined />,
+                    onClick: () => handleMailboxSelect(mailbox.id),
+                    label: (
+                      <div className="flex justify-between items-center w-full">
+                        <span>{mailbox.name}</span>
+                        {mailbox.unreadCount > 0 && (
+                          <Badge count={mailbox.unreadCount} style={{ backgroundColor: '#667eea', boxShadow: 'none' }} />
+                        )}
+                      </div>
+                    ),
+                  }))}
+                />
+              </div>
+
+              {/* Sidebar Footer: View Switcher & User Profile */}
+              <div className="sidebar-footer">
+                <div className="mb-4 flex bg-gray-100 p-1 rounded-lg">
+                  <button
+                    onClick={() => handleViewToggle('list')}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium border-0 cursor-pointer transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}
+                  >
+                    <BarsOutlined /> <span>List</span>
+                  </button>
+                  <button
+                    onClick={() => handleViewToggle('kanban')}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium border-0 cursor-pointer transition-all ${viewMode === 'kanban' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}
+                  >
+                    <AppstoreOutlined /> <span>Kanban</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between p-2 rounded-xl border border-gray-100 bg-white">
+                  <div className="flex items-center gap-3">
+                    <Avatar style={{ backgroundColor: '#667eea' }}>
+                      {user?.name?.charAt(0)?.toUpperCase()}
+                    </Avatar>
+                    <div className="flex flex-col">
+                      <Text strong style={{ fontSize: '13px', lineHeight: 1.2 }}>{user?.name}</Text>
+                      <Text type="secondary" style={{ fontSize: '11px' }}>{user?.email?.split('@')[0]}</Text>
+                    </div>
+                  </div>
+                  <Dropdown
+                    menu={{
+                      items: [
+                        { key: 'stats', icon: <PieChartOutlined />, label: 'Statistics', onClick: () => window.location.href = '/statistics' },
+                        { type: 'divider' },
+                        { key: 'logout', icon: <LogoutOutlined />, label: 'Logout', danger: true, onClick: logout }
+                      ]
                     }}
-                    onReply={handleReply}
-                    onForward={handleForward}
-                    onSummarize={handleSummarize}
-                    loadingSummary={loadingSummary}
-                    onDownloadAttachment={handleDownloadAttachment}
-                    showMobileDetail={false}
-                  />
-                )}
+                    trigger={['click']}
+                  >
+                    <Button type="text" icon={<ExportOutlined style={{ color: '#8c8c8c' }} />} />
+                  </Dropdown>
+                </div>
               </div>
-            </Modal>
-          </Content>
-        ) : (
-          <Layout className="main-layout" style={{ flex: 1, overflow: 'hidden' }}>
-            {/* Left Sidebar - Mailboxes */}
-            <Sider
-              width={250}
-              theme="light"
-              style={{
-                borderRight: '1px solid #f0f0f0',
-                overflowY: 'auto', // Enable vertical scrolling
-                height: '100%',
-                // On mobile: hide if detail is shown OR if email list is shown (technically list is always shown on mobile unless detail is open)
-                // But we want Sider to be hidden on mobile generally unless toggled? 
-                // For simplicity: Mobile view = Stack. 
-                // If showMobileDetail is true, hide Sider.
-                // If showMobileDetail is false, show Sider? No, usually Sider is hidden behind a menu or takes full width.
-                // Let's make Sider hidden on small screens and use a Drawer or just stack it.
-                // For this assignment: 3-column on desktop, 1-column on mobile.
-                // Mobile: Mailbox List -> Email List -> Email Detail.
-                // So we need another state for "Show Mailbox List".
-                // Let's assume: Desktop = All 3 visible. Mobile = One active view.
-              }}
-              breakpoint="lg"
-              collapsedWidth="0"
-              className={`mailbox-sider ${showMobileDetail ? 'hidden-mobile' : ''}`}
-            >
-              <div style={{ padding: '16px' }}>
-                <Button
-                  type="primary"
-                  icon={<EditOutlined />}
-                  block
-                  size="large"
-                  onClick={() => setIsComposeVisible(true)}
-                  style={{ borderRadius: '24px', height: '48px' }}
-                >
-                  Compose
-                </Button>
-              </div>
-              <Menu
-                mode="inline"
-                selectedKeys={[selectedMailbox]}
-                style={{ height: '100%', borderRight: 0 }}
-                items={mailboxes.map((mailbox) => ({
-                  key: mailbox.id,
-                  icon: iconMap[mailbox.icon] || <FolderOutlined />,
-                  onClick: () => handleMailboxSelect(mailbox.id),
-                  label: (
-                    <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                      <span>{mailbox.name}</span>
-                      {mailbox.unreadCount > 0 && (
-                        <Badge count={mailbox.unreadCount} style={{ backgroundColor: '#667eea' }} />
-                      )}
-                    </span>
-                  ),
-                }))}
+            </div>
+          </Sider>
+
+          <Layout style={{ flex: 1, overflow: 'hidden', background: '#f8fafc' }}>
+            <div className="px-6 py-4">
+              <FilterBar 
+                filters={filters}
+                sortMode={sortMode}
+                onFilterChange={setFilters}
+                onSortChange={setSortMode}
+                onSync={handleSync}
+                onRepair={handleRepair}
+                onRefresh={handleRefresh}
+                onSettings={viewMode === 'kanban' ? () => setKanbanSettingsOpen(true) : undefined}
+                syncLoading={syncLoading}
+                refreshLoading={emailsLoading}
               />
-            </Sider>
+            </div>
 
-            {/* Mobile Drawer for Sidebar */}
-            <Drawer
-              title="Mailboxes"
-              placement="left"
-              onClose={() => setMobileDrawerOpen(false)}
-              open={mobileDrawerOpen}
-              width={280}
-              styles={{ body: { padding: 0 } }}
-            >
-              <div style={{ padding: '16px' }}>
+            <Content style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              {isSearching ? (
+                <div className="flex-1 overflow-hidden">
+                  <SearchResults
+                    results={searchResults}
+                    loading={searchLoading}
+                    onSelect={handleEmailSelect}
+                    onClose={handleClearSearch}
+                    searchQuery={searchQuery}
+                    onLoadMore={handleLoadMoreSearch}
+                    loadingMore={loadingMore}
+                    hasMore={!!nextPageToken}
+                    totalEstimate={totalEstimate}
+                    scores={searchScores}
+                    searchMode={searchMode}
+                  />
+                </div>
+              ) : viewMode === 'kanban' ? (
+                <KanbanBoard 
+                  onCardClick={handleKanbanCardClick} 
+                  filters={filters}
+                  sortMode={sortMode}
+                  accountId={accountId}
+                  settingsOpen={kanbanSettingsOpen}
+                  onSettingsClose={() => setKanbanSettingsOpen(false)}
+                />
+              ) : (
+                <Layout style={{ flex: 1, overflow: 'hidden', background: 'transparent' }}>
+                  {/* Middle - Email List */}
+                  <div className={`flex flex-col border-r border-gray-100 bg-white ${showMobileDetail ? 'hidden' : 'flex'}`} style={{ width: '400px' }}>
+                    <div className="p-4 border-bottom border-gray-100">
+                      <Title level={5} style={{ margin: 0 }}>
+                        {mailboxes.find(m => m.id === selectedMailbox)?.name || 'Inbox'}
+                      </Title>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-2">
+                      {emailsLoading ? <div className="p-12 text-center"><Spin /></div> : (
+                        <List
+                          dataSource={emails}
+                          renderItem={(email, index) => (
+                            <Card
+                              hoverable
+                              className={`mb-2 cursor-pointer transition-all ${selectedEmail?.id === email.id ? 'email-card-selected' : ''}`}
+                              styles={{ body: { padding: '12px' } }}
+                              onClick={() => {
+                                setActiveIndex(index);
+                                handleEmailSelect(email);
+                              }}
+                            >
+                              <div className="flex justify-between items-start mb-1">
+                                <Text strong={!email.isRead} style={{ fontSize: '14px' }}>{email.from.name}</Text>
+                                <Text type="secondary" style={{ fontSize: '11px' }}>{formatDate(email.receivedAt)}</Text>
+                              </div>
+                              <Text strong={!email.isRead} className="block text-sm truncate">{email.subject}</Text>
+                              <Text type="secondary" className="block text-xs truncate">{email.preview}</Text>
+                            </Card>
+                          )}
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right - Detail */}
+                  <div className={`flex-1 bg-white overflow-y-auto no-scrollbar ${!showMobileDetail ? 'hidden-mobile' : ''}`}>
+                    <EmailDetail
+                      email={selectedEmail}
+                      onBack={() => setShowMobileDetail(false)}
+                      onStar={handleStar}
+                      onDelete={handleDelete}
+                      onReply={handleReply}
+                      onForward={handleForward}
+                      onSnooze={handleSnooze}
+                      onSummarize={handleSummarize}
+                      loadingSummary={loadingSummary}
+                      onDownloadAttachment={handleDownloadAttachment}
+                      showMobileDetail={showMobileDetail}
+                    />
+                  </div>
+                </Layout>
+              )}
+            </Content>
+          </Layout>
+        </Layout>
+
+        {/* Mobile Drawer */}
+        <Drawer
+          placement="left"
+          onClose={() => setMobileDrawerOpen(false)}
+          open={mobileDrawerOpen}
+          width={280}
+          styles={{ body: { padding: 0 } }}
+          closable={false}
+        >
+          <div className="sidebar-container">
+            <div className="sidebar-header">
+              <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl shadow text-white" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+                  <path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>
+                </svg>
+              </div>
+              <Title level={4} style={{ margin: 0 }}>MailBoard</Title>
+            </div>
+            <div className="sidebar-content">
+              <div style={{ padding: '0 8px 16px 8px' }}>
                 <Button
                   type="primary"
                   icon={<EditOutlined />}
@@ -1022,7 +990,7 @@ export default function InboxPage() {
                     setIsComposeVisible(true);
                     setMobileDrawerOpen(false);
                   }}
-                  style={{ marginBottom: '16px', borderRadius: '24px', height: '48px' }}
+                  style={{ borderRadius: '12px', height: '48px' }}
                 >
                   Compose
                 </Button>
@@ -1030,7 +998,7 @@ export default function InboxPage() {
               <Menu
                 mode="inline"
                 selectedKeys={[selectedMailbox]}
-                style={{ borderRight: 0 }}
+                style={{ border: 'none' }}
                 items={mailboxes.map((mailbox) => ({
                   key: mailbox.id,
                   icon: iconMap[mailbox.icon] || <FolderOutlined />,
@@ -1039,172 +1007,18 @@ export default function InboxPage() {
                     setMobileDrawerOpen(false);
                   },
                   label: (
-                    <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                    <div className="flex justify-between items-center w-full">
                       <span>{mailbox.name}</span>
                       {mailbox.unreadCount > 0 && (
-                        <Badge count={mailbox.unreadCount} style={{ backgroundColor: '#667eea' }} />
+                        <Badge count={mailbox.unreadCount} style={{ backgroundColor: '#667eea', boxShadow: 'none' }} />
                       )}
-                    </span>
+                    </div>
                   ),
                 }))}
               />
-            </Drawer>
-
-            {/* Middle - Email List */}
-            <Layout
-              style={{
-                display: showMobileDetail ? 'none' : 'flex',
-                borderRight: '1px solid #f0f0f0',
-                flexDirection: 'column',
-                height: '100%',
-                overflow: 'hidden'
-              }}
-              className="email-list-layout"
-            >
-              <div style={{
-                padding: '16px',
-                background: '#fff',
-                borderBottom: '1px solid #f0f0f0',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexShrink: 0
-              }}>
-                <Title level={5} style={{ margin: 0 }}>
-                  {mailboxes.find(m => m.id === selectedMailbox)?.name || 'Emails'}
-                </Title>
-                <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={emailsLoading}>
-                  Refresh
-                </Button>
-              </div>
-
-              <Content style={{ padding: '8px', overflowY: 'auto', flex: 1 }}>
-                {emailsLoading ? (
-                  <div style={{ textAlign: 'center', padding: '48px' }}>
-                    <Spin size="large" />
-                  </div>
-                ) : emails.length === 0 ? (
-                  <Empty description="No emails" style={{ marginTop: '48px' }} />
-                ) : (
-                  <List
-                    dataSource={emails}
-                    renderItem={(email, index) => (
-                      <Card
-                        hoverable
-                        style={{
-                          marginBottom: '8px',
-                          cursor: 'pointer',
-                          backgroundColor: email.isRead ? '#fff' : '#f6f8fa',
-                          borderLeft: selectedEmail?.id === email.id ? '3px solid #667eea' : '3px solid transparent',
-                          boxShadow: activeIndex === index ? '0 0 0 2px #1890ff' : 'none',
-                          transform: activeIndex === index ? 'translateX(4px)' : 'none',
-                          transition: 'all 0.2s'
-                        }}
-                        styles={{ body: { padding: '12px 16px' } }}
-                        onClick={() => {
-                          setActiveIndex(index);
-                          handleEmailSelect(email);
-                        }}
-                      >
-                        <Space direction="vertical" style={{ width: '100%' }} size={4}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Space>
-                              {!email.isRead && (
-                                <div className="w-2 h-2 rounded-full bg-blue-600" style={{ marginRight: -4 }} />
-                              )}
-                              <Text strong={!email.isRead} style={{ fontSize: '14px', color: !email.isRead ? '#262626' : '#595959' }}>
-                                {email?.from?.name || email?.from?.email || 'Unknown Sender'}
-                              </Text>
-                              <div 
-                                onClick={(e) => handleStar(e, email)}
-                                style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
-                              >
-                                {email.isStarred ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined style={{ color: '#d9d9d9' }} />}
-                              </div>
-                              {email.hasAttachments && <PaperClipOutlined />}
-                            </Space>
-                            <Text type="secondary" style={{ fontSize: '12px' }}>
-                              {formatDate(email.receivedAt)}
-                            </Text>
-                          </div>
-                          <Text strong={!email.isRead} style={{ fontSize: '13px' }}>
-                            {email.subject}
-                          </Text>
-                          <Text type="secondary" ellipsis style={{ fontSize: '12px' }}>
-                            {email.preview}
-                          </Text>
-                        </Space>
-                      </Card>
-                    )}
-                  />
-                )}
-
-                {/* Pagination */}
-                {!emailsLoading && emails.length > 0 && (
-                  <div style={{
-                    padding: '16px',
-                    textAlign: 'center',
-                    borderTop: '1px solid #f0f0f0',
-                    background: '#fff'
-                  }}>
-                    <Pagination
-                      current={currentPage}
-                      total={totalEmails}
-                      pageSize={pageSize}
-                      onChange={handlePageChange}
-                      showSizeChanger
-                      showQuickJumper
-                      showTotal={(total, range) => `${range[0]}-${range[1]} of ${total} emails`}
-                      pageSizeOptions={['10', '20', '50', '100']}
-                    />
-                  </div>
-                )}
-              </Content>
-            </Layout>
-
-            {/* Right - Email Detail */}
-            <Content
-              style={{
-                background: '#fff',
-                padding: showMobileDetail ? '0' : '80px 24px 24px 24px',
-                overflowY: 'auto',
-                height: '100%',
-                display: showMobileDetail ? 'block' : undefined,
-                scrollbarWidth: 'none',
-                msOverflowStyle: 'none',
-                flex: 1
-              }}
-              className={`email-detail-content ${!showMobileDetail ? 'hidden-mobile' : ''} [&::-webkit-scrollbar]:hidden`}
-            >
-              <EmailDetail
-                email={selectedEmail}
-                onBack={() => setShowMobileDetail(false)}
-                onStar={handleStar}
-                onDelete={handleDelete}
-                onReply={handleReply}
-                onForward={handleForward}
-                onSnooze={handleSnooze}
-                onSummarize={handleSummarize}
-                loadingSummary={loadingSummary}
-                onRefresh={async (email) => {
-                  try {
-                    message.loading({ content: 'Refreshing email content...', key: 'refreshing-email' });
-                    await emailService.refreshEmail(email.id);
-                    const updated = await emailService.getEmailDetail(email.id);
-                    setSelectedEmail(updated);
-                    // Update the email in the list as well
-                    setEmails(prev => prev.map(e => e.id === email.id ? updated : e));
-                    message.success({ content: 'Email content refreshed!', key: 'refreshing-email' });
-                  } catch (error) {
-                    message.error({ content: 'Refresh failed', key: 'refreshing-email' });
-                  }
-                }}
-                onDownloadAttachment={handleDownloadAttachment}
-                showMobileDetail={showMobileDetail}
-              />
-            </Content>
-          </Layout>
-        )}
+            </div>
+          </div>
+        </Drawer>
 
         <ComposeModal
           visible={isComposeVisible}
