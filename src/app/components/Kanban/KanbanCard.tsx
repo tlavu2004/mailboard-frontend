@@ -107,21 +107,19 @@ function KanbanCard({ card, onRefresh, onClick }: KanbanCardProps) {
     <div
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
       // Use local isRead for immediate feedback
-      className={`group relative mb-3 w-full rounded-xl bg-white p-4 shadow-sm hover:shadow-md transition-all border border-gray-100 select-none cursor-grab active:cursor-grabbing border-l-[4px] ${isRead ? 'border-l-gray-300' : 'border-l-blue-500'}`}
+      className={`group relative mb-3 w-full rounded-xl bg-white p-4 shadow-sm hover:shadow-md transition-all border border-gray-100 select-none border-l-[4px] ${isRead ? 'border-l-gray-300' : 'border-l-blue-500'}`}
     >
-      {/* Header: Sender Name & Date */}
-      <div className="mb-2 flex items-center justify-between">
+      {/* Header: Sender Name & Date (Drag Handle) */}
+      <div className="mb-2 flex items-center justify-between cursor-grab active:cursor-grabbing" {...attributes} {...listeners}>
         <h4 className={`text-sm font-bold text-black leading-tight truncate pr-2 ${!isRead ? 'text-black' : 'text-gray-800'}`}>
           {senderName}
         </h4>
         <span className="text-xs text-gray-400 whitespace-nowrap">{timeStr}</span>
       </div>
 
-      {/* Subject */}
-      <div className="mb-2">
+      {/* Content Area (Clickable) */}
+      <div className="mb-2 cursor-pointer" onClick={handleCardClick}>
         <h3 className={`text-base font-bold mb-1 leading-snug truncate ${!isRead ? 'text-black' : 'text-gray-800'}`}>
           {card.subject}
         </h3>

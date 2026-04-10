@@ -726,7 +726,7 @@ export default function InboxPage() {
         <Header className="top-toolbar">
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <Button
-              className="lg:hidden"
+              className="hidden-desktop"
               icon={<MenuOutlined />}
               onClick={() => setMobileDrawerOpen(true)}
               type="text"
@@ -893,68 +893,83 @@ export default function InboxPage() {
                     searchMode={searchMode}
                   />
                 </div>
-              ) : viewMode === 'kanban' ? (
-                <KanbanBoard 
-                  onCardClick={handleKanbanCardClick} 
-                  filters={filters}
-                  sortMode={sortMode}
-                  accountId={accountId}
-                  settingsOpen={kanbanSettingsOpen}
-                  onSettingsClose={() => setKanbanSettingsOpen(false)}
-                />
               ) : (
-                <Layout style={{ flex: 1, overflow: 'hidden', background: 'transparent' }}>
-                  {/* Middle - Email List */}
-                  <div className={`flex flex-col border-r border-gray-100 bg-white ${showMobileDetail ? 'hidden' : 'flex'}`} style={{ width: '400px' }}>
-                    <div className="p-4 border-bottom border-gray-100">
-                      <Title level={5} style={{ margin: 0 }}>
-                        {mailboxes.find(m => m.id === selectedMailbox)?.name || 'Inbox'}
-                      </Title>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-2">
-                      {emailsLoading ? <div className="p-12 text-center"><Spin /></div> : (
-                        <List
-                          dataSource={emails}
-                          renderItem={(email, index) => (
-                            <Card
-                              hoverable
-                              className={`mb-2 cursor-pointer transition-all ${selectedEmail?.id === email.id ? 'email-card-selected' : ''}`}
-                              styles={{ body: { padding: '12px' } }}
-                              onClick={() => {
-                                setActiveIndex(index);
-                                handleEmailSelect(email);
-                              }}
-                            >
-                              <div className="flex justify-between items-start mb-1">
-                                <Text strong={!email.isRead} style={{ fontSize: '14px' }}>{email.from.name}</Text>
-                                <Text type="secondary" style={{ fontSize: '11px' }}>{formatDate(email.receivedAt)}</Text>
-                              </div>
-                              <Text strong={!email.isRead} className="block text-sm truncate">{email.subject}</Text>
-                              <Text type="secondary" className="block text-xs truncate">{email.preview}</Text>
-                            </Card>
+                <div className="flex h-full w-full overflow-hidden relative">
+                  {/* Left Column: List or Kanban */}
+                  <div 
+                    className={`flex flex-col bg-white border-r border-gray-100 ${showMobileDetail ? (viewMode === 'list' ? 'hidden-mobile' : 'hidden') : 'flex w-full'}`}
+                    style={{ 
+                      width: viewMode === 'list' ? (selectedEmail ? '380px' : '100%') : '100%',
+                      transition: 'width 0.3s ease'
+                    }}
+                  >
+                    {viewMode === 'list' ? (
+                      <>
+                        <div className="p-4 border-b border-gray-100">
+                          <Title level={5} style={{ margin: 0 }}>
+                            {mailboxes.find(m => m.id === selectedMailbox)?.name || 'Inbox'}
+                          </Title>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-3">
+                          {emailsLoading ? <div className="p-12 text-center"><Spin /></div> : (
+                            <List
+                              dataSource={emails}
+                              renderItem={(email, index) => (
+                                <Card
+                                  hoverable
+                                  className={`mail-item-card cursor-pointer transition-all ${selectedEmail?.id === email.id ? 'email-card-selected' : ''}`}
+                                  styles={{ body: { padding: '12px' } }}
+                                  onClick={() => {
+                                    setActiveIndex(index);
+                                    handleEmailSelect(email);
+                                  }}
+                                >
+                                  <div className="flex justify-between items-start mb-1">
+                                    <Text strong={!email.isRead} style={{ fontSize: '14px' }}>{email.from.name}</Text>
+                                    <Text type="secondary" style={{ fontSize: '11px' }}>{formatDate(email.receivedAt)}</Text>
+                                  </div>
+                                  <Text strong={!email.isRead} className="block text-sm truncate">{email.subject}</Text>
+                                  <Text type="secondary" className="block text-xs truncate leading-relaxed" style={{ marginTop: '4px' }}>{email.preview}</Text>
+                                </Card>
+                              )}
+                            />
                           )}
-                        />
-                      )}
-                    </div>
+                        </div>
+                      </>
+                    ) : (
+                      <KanbanBoard 
+                        onCardClick={handleKanbanCardClick} 
+                        filters={filters}
+                        sortMode={sortMode}
+                        accountId={accountId}
+                        settingsOpen={kanbanSettingsOpen}
+                        onSettingsClose={() => setKanbanSettingsOpen(false)}
+                      />
+                    )}
                   </div>
 
-                  {/* Right - Detail */}
-                  <div className={`flex-1 bg-white overflow-y-auto no-scrollbar ${!showMobileDetail ? 'hidden-mobile' : ''}`}>
-                    <EmailDetail
-                      email={selectedEmail}
-                      onBack={() => setShowMobileDetail(false)}
-                      onStar={handleStar}
-                      onDelete={handleDelete}
-                      onReply={handleReply}
-                      onForward={handleForward}
-                      onSnooze={handleSnooze}
-                      onSummarize={handleSummarize}
-                      loadingSummary={loadingSummary}
-                      onDownloadAttachment={handleDownloadAttachment}
-                      showMobileDetail={showMobileDetail}
-                    />
-                  </div>
-                </Layout>
+                  {/* Right Column: Detail */}
+                  {selectedEmail && (
+                    <div className={`flex-1 bg-white overflow-hidden ${!showMobileDetail ? (viewMode === 'list' ? 'hidden-mobile flex' : 'hidden') : 'absolute inset-0 z-10 flex md:relative md:flex'}`}>
+                      <EmailDetail
+                        email={selectedEmail}
+                        onBack={() => {
+                          setShowMobileDetail(false);
+                          if (viewMode === 'kanban') setSelectedEmail(null);
+                        }}
+                        onStar={handleStar}
+                        onDelete={handleDelete}
+                        onReply={handleReply}
+                        onForward={handleForward}
+                        onSnooze={handleSnooze}
+                        onSummarize={handleSummarize}
+                        loadingSummary={loadingSummary}
+                        onDownloadAttachment={handleDownloadAttachment}
+                        showMobileDetail={showMobileDetail}
+                      />
+                    </div>
+                  )}
+                </div>
               )}
             </Content>
           </Layout>
