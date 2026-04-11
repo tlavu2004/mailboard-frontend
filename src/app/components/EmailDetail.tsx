@@ -256,7 +256,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                 </div>
             ) : (
                 <iframe
-                  srcDoc={email.body}
+                  srcDoc={`<base href="${process.env.NEXT_PUBLIC_API_URL}/">` + email.body}
                   title="Email Content"
                   style={{
                     width: '100%',
@@ -265,6 +265,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                     overflow: 'hidden',
                   }}
                   sandbox="allow-same-origin allow-scripts"
+                  referrerPolicy="no-referrer"
                   onLoad={(e) => {
                     // Auto-resize iframe to content height
                     const iframe = e.target as HTMLIFrameElement;
