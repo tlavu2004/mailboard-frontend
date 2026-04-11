@@ -232,11 +232,11 @@ export default function KanbanBoard({
       // Determine if we are over a column itself or a card inside it
       
       if (isOverColumn) {
-        newIndex = overItems.length + 1;
+        newIndex = overItems.length;
       } else {
         const isBelowLastItem = over && overIndex === overItems.length - 1;
         const modifier = isBelowLastItem ? 1 : 0;
-        newIndex = overIndex >= 0 ? overIndex + modifier : overItems.length + 1;
+        newIndex = overIndex >= 0 ? overIndex + modifier : overItems.length;
       }
 
       const activeItem = activeItems[activeIndex];

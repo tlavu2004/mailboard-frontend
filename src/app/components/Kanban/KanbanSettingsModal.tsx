@@ -390,6 +390,7 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({
                       size="large"
                       value={editForm.label}
                       onChange={(e) => setEditForm(prev => ({ ...prev, label: e.target.value }))}
+                      disabled={editingColumn?.isDefault}
                       className="!rounded-lg !border-gray-200"
                     />
                   </div>
@@ -412,6 +413,7 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({
                       }}
                       allowClear
                       className="w-full"
+                      disabled={editingColumn?.isDefault}
                       status={getDuplicateLabelWarning(editForm.gmailLabel, editingColumn?.id) ? 'warning' : undefined}
                       options={[
                         { value: '', label: '🚫 No Label Mapping' },
@@ -437,6 +439,7 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({
                         value={editForm.color || '#64748b'}
                         onChange={(_, hex) => setEditForm(prev => ({ ...prev, color: hex }))}
                         showText
+                        disabled={editingColumn?.isDefault}
                       />
                       <span className="text-sm text-gray-500">Choose any color</span>
                     </div>
@@ -448,7 +451,7 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({
                 <div className="p-6 md:px-12 md:py-8 bg-gray-50/50 border-t border-gray-100 flex justify-end">
                   <button
                     onClick={handleUpdateColumn}
-                    disabled={saving}
+                    disabled={saving || (editingColumn?.isDefault && !isCreating)}
                     className="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 disabled:opacity-50"
                   >
                     {saving ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> : <Save size={16} />} 
