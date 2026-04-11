@@ -16,11 +16,13 @@ import {
 import { Empty } from 'antd';
 
 interface KanbanColumnProps {
-  id: string;
+  id: string;       // DB UUID - used for column sorting (useSortable)
+  columnKey: string; // Logical key e.g. "INBOX" - used for card dropping (useDroppable)
   label: string;
   color?: string;
   cards: KanbanCardType[];
   onRefresh: () => void;
+  onSnooze: (cardId: string, until: string) => void;
   onCardClick: (card: KanbanCardType) => void;
 }
 
@@ -48,7 +50,7 @@ const getColumnConfig = (id: string, label: string) => {
   return { bg: 'bg-white', icon: <TagOutlined />, iconColor: 'text-gray-500', badgeColor: 'bg-gray-100 text-gray-600' };
 }
 
-function KanbanColumn({ id, label, color, cards, onRefresh, onCardClick }: KanbanColumnProps) {
+function KanbanColumn({ id, columnKey, label, color, cards, onRefresh, onSnooze, onCardClick }: KanbanColumnProps) {
   const { 
     attributes, 
     listeners, 
@@ -58,9 +60,10 @@ function KanbanColumn({ id, label, color, cards, onRefresh, onCardClick }: Kanba
     isDragging 
   } = useSortable({ id });
 
-  const { setNodeRef: setDroppableRef } = useDroppable({ id });
+  // Use columnKey as droppable ID so it matches the columns state (e.g. "INBOX", "TODO")
+  const { setNodeRef: setDroppableRef } = useDroppable({ id: columnKey });
 
-  const config = getColumnConfig(id, label);
+  const config = getColumnConfig(columnKey, label);
   
   const sortableStyle = {
     transform: CSS.Translate.toString(transform),
@@ -114,7 +117,7 @@ function KanbanColumn({ id, label, color, cards, onRefresh, onCardClick }: Kanba
       >
         <SortableContext items={cards.map(c => c.id)} strategy={verticalListSortingStrategy}>
           {cards.map((card) => (
-            <KanbanCard key={card.id} card={card} onRefresh={onRefresh} onClick={onCardClick} />
+            <KanbanCard key={card.id} card={card} onRefresh={onRefresh} onSnooze={onSnooze} onClick={onCardClick} />
           ))}
         </SortableContext>
         {cards.length === 0 && (

@@ -9,6 +9,7 @@ import { KanbanCardType, kanbanService } from '@/services/kanbanService';
 interface KanbanCardProps {
   card: KanbanCardType;
   onRefresh: () => void;
+  onSnooze: (cardId: string, until: string) => void;
   onClick: (card: KanbanCardType) => void;
 }
 
@@ -19,7 +20,7 @@ import SnoozePopover from '../SnoozePopover';
 // Export memoized component
 export default React.memo(KanbanCard);
 
-function KanbanCard({ card, onRefresh, onClick }: KanbanCardProps) {
+function KanbanCard({ card, onRefresh, onSnooze, onClick }: KanbanCardProps) {
   // ... implementation remains the same
   const {
     attributes,
@@ -81,7 +82,8 @@ function KanbanCard({ card, onRefresh, onClick }: KanbanCardProps) {
     try {
       await kanbanService.snoozeCard(card.id, until);
       setShowSnooze(false);
-      onRefresh();
+      // Trigger instant UI feedback
+      onSnooze(card.id, until);
     } catch (err) {
       console.error(err);
     }
@@ -107,11 +109,13 @@ function KanbanCard({ card, onRefresh, onClick }: KanbanCardProps) {
     <div
       ref={setNodeRef}
       style={style}
+      {...attributes}
+      {...listeners}
       // Use local isRead for immediate feedback
-      className={`group relative mb-3 w-full rounded-xl bg-white p-4 shadow-sm hover:shadow-md transition-all border border-gray-100 select-none border-l-[4px] ${isRead ? 'border-l-gray-300' : 'border-l-blue-500'}`}
+      className={`group relative mb-3 w-full rounded-xl bg-white p-4 shadow-sm hover:shadow-md transition-all border border-gray-100 select-none border-l-[4px] cursor-grab active:cursor-grabbing ${isRead ? 'border-l-gray-300' : 'border-l-blue-500'}`}
     >
-      {/* Header: Sender Name & Date (Drag Handle) */}
-      <div className="mb-2 flex items-center justify-between cursor-grab active:cursor-grabbing" {...attributes} {...listeners}>
+      {/* Header: Sender Name & Date */}
+      <div className="mb-2 flex items-center justify-between">
         <h4 className={`text-sm font-bold text-black leading-tight truncate pr-2 ${!isRead ? 'text-black' : 'text-gray-800'}`}>
           {senderName}
         </h4>
@@ -119,7 +123,13 @@ function KanbanCard({ card, onRefresh, onClick }: KanbanCardProps) {
       </div>
 
       {/* Content Area (Clickable) */}
-      <div className="mb-2 cursor-pointer" onClick={handleCardClick}>
+      <div 
+        className="mb-2 cursor-pointer" 
+        onClick={(e) => {
+          e.stopPropagation();
+          handleCardClick();
+        }}
+      >
         <h3 className={`text-base font-bold mb-1 leading-snug truncate ${!isRead ? 'text-black' : 'text-gray-800'}`}>
           {card.subject}
         </h3>
@@ -149,6 +159,7 @@ function KanbanCard({ card, onRefresh, onClick }: KanbanCardProps) {
           <div className="flex items-center gap-1">
             <button
               onClick={handleSummarize}
+              onPointerDown={(e) => e.stopPropagation()}
               disabled={loadingSummary}
               className={`p-1.5 rounded transition-colors text-xs ${loadingSummary ? 'bg-blue-100 text-blue-600 cursor-wait' : isShowingSummary ? 'bg-green-100 text-green-700' : 'text-gray-400 hover:text-blue-600 hover:bg-blue-50'}`}
               title={loadingSummary ? 'Generating summary...' : 'Summarize'}
@@ -183,6 +194,7 @@ function KanbanCard({ card, onRefresh, onClick }: KanbanCardProps) {
             e.stopPropagation();
             handleCardClick();
           }}
+          onPointerDown={(e) => e.stopPropagation()}
           className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
         >
           View details

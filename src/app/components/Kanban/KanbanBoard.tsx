@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { message } from 'antd';
 import {
   DndContext,
-  closestCenter,
+  closestCorners,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -10,6 +10,7 @@ import {
   DragOverlay,
   DragEndEvent,
   DragStartEvent,
+  rectIntersection,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -175,15 +176,108 @@ export default function KanbanBoard({
   };
 
   const findContainer = (id: string, cols: Record<string, KanbanCardType[]>) => {
+    // 1. Check if ID is a column key (logical name)
     if (id in cols) {
       return id;
     }
-    return Object.keys(cols).find((key) => cols[key].find((c) => c.id === id));
+    // 2. Check if ID is a card ID within any column
+    const foundByCard = Object.keys(cols).find((key) => cols[key].find((c) => c.id === id));
+    if (foundByCard) return foundByCard;
+
+    // 3. Check if ID is a column DB ID (from meta)
+    const foundMeta = meta.find(m => m.id === id);
+    if (foundMeta) return foundMeta.key;
+
+    return undefined;
   };
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
   };
+
+  const handleDragOver = (event: any) => {
+    const { active, over } = event;
+    const activeIdVal = active.id as string;
+    const overId = over?.id as string;
+
+    if (!overId) return;
+
+    // PROTECTION: If we are dragging a column, don't process card-over logic
+    const isActiveColumn = meta.some(m => m.id === activeIdVal);
+    if (isActiveColumn) return;
+
+    // Find containers
+    const activeContainer = findContainer(activeIdVal, columns);
+    const overContainer = findContainer(overId, columns);
+
+    if (!activeContainer || !overContainer || activeContainer === overContainer) {
+      return;
+    }
+
+    // Logic to move item between containers in STATE
+    setColumns((prev) => {
+      const activeItems = prev[activeContainer];
+      const overItems = prev[overContainer];
+
+      const activeIndex = activeItems.findIndex((item) => item.id === activeIdVal);
+      const overIndex = overItems.findIndex((item) => item.id === overId);
+
+      let newIndex;
+      // Determine if we are over a column itself or a card inside it
+      const isOverColumn = meta.some(m => m.id === overId) || overId in prev;
+      
+      if (isOverColumn) {
+        newIndex = overItems.length + 1;
+      } else {
+        const isBelowLastItem = over && overIndex === overItems.length - 1;
+        const modifier = isBelowLastItem ? 1 : 0;
+        newIndex = overIndex >= 0 ? overIndex + modifier : overItems.length + 1;
+      }
+
+      const activeItem = activeItems[activeIndex];
+      if (!activeItem) return prev; // Safety check
+
+      return {
+        ...prev,
+        [activeContainer]: [...prev[activeContainer].filter((item) => item.id !== activeIdVal)],
+        [overContainer]: [
+          ...prev[overContainer].slice(0, newIndex),
+          activeItem,
+          ...prev[overContainer].slice(newIndex, prev[overContainer].length)
+        ]
+      };
+    });
+  };
+
+  const handleCardSnooze = useCallback((cardId: string, until: string) => {
+    // Immediate UI Update: Remove card from current column and potentially add to SNOOZED
+    setColumns(prev => {
+      const newCols = { ...prev };
+      let snoozedItem: KanbanCardType | undefined;
+
+      // Find and remove from any column
+      Object.keys(newCols).forEach(key => {
+        const idx = newCols[key].findIndex(c => c.id === cardId);
+        if (idx !== -1) {
+          [snoozedItem] = newCols[key].splice(idx, 1);
+          newCols[key] = [...newCols[key]];
+        }
+      });
+
+      // Add to SNOOZED if it exists in state
+      if (snoozedItem && newCols['SNOOZED']) {
+        newCols['SNOOZED'] = [
+          { ...snoozedItem, snoozedUntil: until },
+          ...newCols['SNOOZED']
+        ];
+      }
+
+      return newCols;
+    });
+    
+    // Then refresh in background to stay in sync with server
+    fetchBoard();
+  }, [fetchBoard]);
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
@@ -196,14 +290,12 @@ export default function KanbanBoard({
 
     // Check if we are dragging a COLUMN or a CARD
     const isActiveColumn = meta.some(m => m.id === activeIdVal);
-    const isOverColumn = meta.some(m => m.id === overId);
-
     if (isActiveColumn) {
       if (activeIdVal === overId) return;
-
       const oldIndex = meta.findIndex(m => m.id === activeIdVal);
       const newIndex = meta.findIndex(m => m.id === overId);
-      
+      if (newIndex === -1) return; // Dropped over something that isn't a column
+
       const newMetaOrder = arrayMove(meta, oldIndex, newIndex);
       setMeta(newMetaOrder);
 
@@ -218,28 +310,23 @@ export default function KanbanBoard({
       return;
     }
 
-    // Original Card Drag logic
+    // Card Drag logic
     const activeContainer = findContainer(activeIdVal, columns);
     const overContainer = findContainer(overId, columns);
 
     if (!activeContainer || !overContainer) return;
 
-    if (activeContainer === overContainer && active.id === over.id) return;
+    // The columns state has already been updated by handleDragOver
+    // We just need to find the item in its NEW container, calculate order and persist
+    const currentItems = columns[overContainer];
+    const activeIndex = currentItems.findIndex(c => c.id === activeIdVal);
+    const movedItem = currentItems[activeIndex];
 
-    // 1. Calculate new position and order
-    const sourceList = [...columns[activeContainer]];
-    const destList = activeContainer === overContainer ? sourceList : [...columns[overContainer]];
-    
-    const activeIndex = sourceList.findIndex(c => c.id === activeIdVal);
-    const overIndex = destList.findIndex(c => c.id === overId);
-    
-    let newIndex = overIndex === -1 ? 0 : overIndex;
-    
-    const [movedItem] = sourceList.splice(activeIndex, 1);
-    destList.splice(newIndex, 0, movedItem);
+    if (!movedItem) return;
 
-    const prevItem = destList[newIndex - 1]; 
-    const nextItem = destList[newIndex + 1]; 
+    // Calculate new position and order
+    const prevItem = currentItems[activeIndex - 1]; 
+    const nextItem = currentItems[activeIndex + 1]; 
     
     let newOrder: number;
     const GAP = 1000; 
@@ -255,12 +342,6 @@ export default function KanbanBoard({
     }
 
     movedItem.kanbanOrder = newOrder;
-
-    setColumns((prev) => ({
-      ...prev,
-      [activeContainer]: sourceList,
-      [overContainer]: destList,
-    }));
 
     try {
       await kanbanService.moveCard(activeIdVal, overContainer, newOrder);
@@ -280,20 +361,26 @@ export default function KanbanBoard({
       return (
         <KanbanColumnComponent
           id={foundMeta.id}
+          columnKey={foundMeta.key}
           label={foundMeta.label}
           color={foundMeta.color}
           cards={processedColumns[foundMeta.key] || []}
           onRefresh={() => {}}
+          onSnooze={() => {}}
           onCardClick={() => {}}
         />
       );
     }
 
     // 2. Otherwise it's a card
-    for (const key in columns) {
-      const found = columns[key].find(c => c.id === activeId);
-      if (found) return <KanbanCard card={found} onRefresh={() => { }} onClick={() => { }} />;
-    }
+        for (const key in columns) {
+          const found = columns[key].find(c => c.id === activeId);
+          if (found) return (
+            <div style={{ pointerEvents: 'none' }}>
+               <KanbanCard card={found} onRefresh={() => { }} onSnooze={() => { }} onClick={() => { }} />
+            </div>
+          );
+        }
     return null;
   };
 
@@ -337,8 +424,9 @@ export default function KanbanBoard({
 
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={closestCorners}
         onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
         <div className="flex gap-4 h-full min-w-fit pb-4">
@@ -346,11 +434,13 @@ export default function KanbanBoard({
             {meta.map((col) => (
               <KanbanColumnComponent
                 key={col.key}
-                id={col.id} // use database ID for sortable!
+                id={col.id}
+                columnKey={col.key}
                 label={col.label}
                 color={col.color}
                 cards={processedColumns[col.key] || []}
                 onRefresh={fetchBoard}
+                onSnooze={handleCardSnooze}
                 onCardClick={onCardClick}
               />
             ))}

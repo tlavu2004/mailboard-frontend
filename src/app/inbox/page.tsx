@@ -175,8 +175,8 @@ export default function InboxPage() {
   }, [setMailboxes, setSelectedMailbox]);
 
   const loadEmails = useCallback(async (
-    mailboxId: string, 
-    page: number = 1, 
+    mailboxId: string,
+    page: number = 1,
     perPage: number = pageSize,
     unread?: boolean,
     hasAttachments?: boolean,
@@ -202,16 +202,16 @@ export default function InboxPage() {
     setEmailsLoading(true);
     try {
       let data = await emailService.getEmails(
-        mailboxId, 
-        page, 
-        perPage, 
-        unread, 
+        mailboxId,
+        page,
+        perPage,
+        unread,
         hasAttachments,
         finalSortBy,
         finalSortOrder
       );
       console.log('[InboxPage] loadEmails: raw response:', JSON.stringify(data).substring(0, 200));
-      
+
       // Robust unwrapping: If data itself is an ApiResponse (success/data), unwrap it manually
       if (data && (data as any).success !== undefined && (data as any).data !== undefined) {
         console.log('[InboxPage] loadEmails: unwrapping nested ApiResponse');
@@ -248,7 +248,7 @@ export default function InboxPage() {
     };
     init();
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // When selectedMailbox changes AFTER initial load (e.g. user clicks sidebar), reload emails
@@ -263,7 +263,7 @@ export default function InboxPage() {
       console.log('[InboxPage] selectedMailbox/sort/filter changed to', selectedMailbox, '- reloading emails');
       loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMailbox, filters.unread, filters.hasAttachment, sortMode, pageSize]);
 
   // Auto-generate embeddings periodically (every 2 minutes)
@@ -271,7 +271,7 @@ export default function InboxPage() {
     const generate = () => {
       // If navigator says offline OR user is not logged in, skip immediately
       if (!navigator.onLine || !user) return;
-      
+
       searchService.generateEmbeddings(50)
         .then(result => {
           if (result.processed > 0) {
@@ -379,7 +379,7 @@ export default function InboxPage() {
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
-      
+
       // Calculate new width: mouse postion minus sidebar width (variable)
       // Sidebar width is 260px on desktop
       const newWidth = e.clientX - 260;
@@ -410,7 +410,7 @@ export default function InboxPage() {
   const handleNotification = useCallback((msg: { type: string; message: string }) => {
     if (msg.type === 'NEW_EMAILS') {
       message.info('New emails received! Syncing...');
-      
+
       // Add a small delay (500ms) to ensure DB transaction is fully committed
       // before we fetch the data in our current thread
       setTimeout(() => {
@@ -612,29 +612,29 @@ export default function InboxPage() {
     try {
       const response = await apiClient.post<string>(`emails/${email.id}/summarize`);
       const newSummary = response.data;
-      
+
       if (!newSummary) {
         throw new Error('Empty summary returned');
       }
-      
+
       // Update selected email
       if (selectedEmail?.id === email.id) {
-        setSelectedEmail({ 
-          ...selectedEmail, 
+        setSelectedEmail({
+          ...selectedEmail,
           summary: newSummary,
-          summarySource: newSummary.startsWith('[Gemini]') ? 'GEMINI' : 
-                         newSummary.startsWith('[Local Algo]') ? 'LOCAL_ALGO' : 
-                         newSummary.startsWith('[Local Model]') ? 'LOCAL_MODEL' : undefined
+          summarySource: newSummary.startsWith('[Gemini]') ? 'GEMINI' :
+            newSummary.startsWith('[Local Algo]') ? 'LOCAL_ALGO' :
+              newSummary.startsWith('[Local Model]') ? 'LOCAL_MODEL' : undefined
         });
       }
 
       // Update emails list
-      setEmails(prev => prev.map(e => e.id === email.id ? { 
-        ...e, 
+      setEmails(prev => prev.map(e => e.id === email.id ? {
+        ...e,
         summary: newSummary,
-        summarySource: newSummary.startsWith('[Gemini]') ? 'GEMINI' : 
-                       newSummary.startsWith('[Local Algo]') ? 'LOCAL_ALGO' : 
-                       newSummary.startsWith('[Local Model]') ? 'LOCAL_MODEL' : undefined
+        summarySource: newSummary.startsWith('[Gemini]') ? 'GEMINI' :
+          newSummary.startsWith('[Local Algo]') ? 'LOCAL_ALGO' :
+            newSummary.startsWith('[Local Model]') ? 'LOCAL_MODEL' : undefined
       } : e));
 
       message.success('Summary generated successfully');
@@ -659,14 +659,14 @@ export default function InboxPage() {
         gmailMessageId: card.gmailMessageId,
         threadId: card.threadId,
         accountEmail: card.accountEmail,
-        mailboxId: selectedMailbox || 'INBOX', 
-        from: { name: card.sender, email: card.accountEmail || '' }, 
+        mailboxId: selectedMailbox || 'INBOX',
+        from: { name: card.sender, email: card.accountEmail || '' },
         to: [],
         subject: card.subject,
         preview: card.preview,
-        body: '', 
+        body: '',
         isRead: card.isRead,
-        isStarred: false, 
+        isStarred: false,
         hasAttachments: card.hasAttachments,
         receivedAt: card.receivedAt,
         createdAt: card.receivedAt,
@@ -772,8 +772,8 @@ export default function InboxPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }} onClick={() => handleMailboxSelect('INBOX')}>
               <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg shadow-sm text-white" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
-                  <path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>
+                  <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+                  <path d="M20 3v4" /><path d="M22 5h-4" /><path d="M4 17v2" /><path d="M5 18H3" />
                 </svg>
               </div>
               <Title level={4} style={{ margin: 0, color: '#1a1a1a', letterSpacing: '-0.5px', fontWeight: 700 }}>MailBoard</Title>
@@ -782,14 +782,28 @@ export default function InboxPage() {
 
           <div style={{ flex: 1, maxWidth: '600px', margin: '0 24px' }}>
             {/* Search Bar Refactored for Stability */}
-            <SearchInput 
-              onSearch={handleSearch} 
-              defaultValue={searchQuery} 
+            <SearchInput
+              onSearch={handleSearch}
+              defaultValue={searchQuery}
               ref={searchInputRef}
             />
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="flex bg-gray-100 p-1 rounded-lg mr-2">
+              <button
+                onClick={() => handleViewToggle('list')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium border-0 cursor-pointer transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}
+              >
+                <BarsOutlined /> <span>List</span>
+              </button>
+              <button
+                onClick={() => handleViewToggle('kanban')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium border-0 cursor-pointer transition-all ${viewMode === 'kanban' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}
+              >
+                <AppstoreOutlined /> <span>Kanban</span>
+              </button>
+            </div>
             {/* Sync button removed as it is now in FilterBar */}
           </div>
         </Header>
@@ -806,18 +820,8 @@ export default function InboxPage() {
             trigger={null}
           >
             <div className="sidebar-container">
-              <div 
-                className="sidebar-header cursor-pointer hover:bg-gray-50 transition-colors"
-                onClick={() => handleMailboxSelect('INBOX')}
-              >
-                <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl shadow text-white" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
-                    <path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>
-                  </svg>
-                </div>
-                <Title level={4} style={{ margin: 0 }}>MailBoard</Title>
-              </div>
+              {/* Branding removed: now in top header */}
+              <div style={{ height: '16px' }} />
 
               {/* Sidebar Content: Compose & Mailboxes */}
               <div className="sidebar-content">
@@ -853,23 +857,8 @@ export default function InboxPage() {
                 />
               </div>
 
-              {/* Sidebar Footer: View Switcher & User Profile */}
+              {/* Sidebar Footer: User Profile */}
               <div className="sidebar-footer">
-                <div className="mb-4 flex bg-gray-100 p-1 rounded-lg">
-                  <button
-                    onClick={() => handleViewToggle('list')}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium border-0 cursor-pointer transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}
-                  >
-                    <BarsOutlined /> <span>List</span>
-                  </button>
-                  <button
-                    onClick={() => handleViewToggle('kanban')}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium border-0 cursor-pointer transition-all ${viewMode === 'kanban' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}
-                  >
-                    <AppstoreOutlined /> <span>Kanban</span>
-                  </button>
-                </div>
-
                 <div className="flex items-center justify-between p-2 rounded-xl border border-gray-100 bg-white">
                   <div className="flex items-center gap-3">
                     <Avatar style={{ backgroundColor: '#667eea' }}>
@@ -899,7 +888,7 @@ export default function InboxPage() {
 
           <Layout style={{ flex: 1, overflow: 'hidden', background: '#f8fafc' }}>
             <div className="px-6 py-4">
-              <FilterBar 
+              <FilterBar
                 filters={filters}
                 sortMode={sortMode}
                 onFilterChange={setFilters}
@@ -933,9 +922,9 @@ export default function InboxPage() {
               ) : (
                 <div className="flex h-full w-full overflow-hidden relative">
                   {/* Left Column: List or Kanban */}
-                  <div 
+                  <div
                     className={`flex flex-col bg-white border-r border-gray-100 ${showMobileDetail ? (viewMode === 'list' ? 'hidden-mobile' : 'hidden') : 'flex w-full'}`}
-                    style={{ 
+                    style={{
                       width: viewMode === 'list' ? (selectedEmail ? `${listWidth}px` : '100%') : '100%',
                       transition: isResizing ? 'none' : 'width 0.3s ease'
                     }}
@@ -974,8 +963,8 @@ export default function InboxPage() {
                         </div>
                       </>
                     ) : (
-                      <KanbanBoard 
-                        onCardClick={handleKanbanCardClick} 
+                      <KanbanBoard
+                        onCardClick={handleKanbanCardClick}
                         filters={filters}
                         sortMode={sortMode}
                         accountId={accountId}
@@ -987,7 +976,7 @@ export default function InboxPage() {
 
                   {/* Resizer Handle */}
                   {viewMode === 'list' && selectedEmail && (
-                    <div 
+                    <div
                       className={`resize-handle hidden-mobile ${isResizing ? 'active' : ''}`}
                       onMouseDown={(e) => {
                         e.preventDefault();
@@ -998,7 +987,7 @@ export default function InboxPage() {
 
                   {/* Right Column: Detail */}
                   {selectedEmail && (
-                    <div className={`flex-1 bg-white overflow-hidden ${!showMobileDetail ? (viewMode === 'list' ? 'hidden-mobile flex' : 'hidden') : 'absolute inset-0 z-10 flex md:relative md:flex'}`}>
+                    <div className={`flex-1 bg-white overflow-y-auto ${!showMobileDetail ? (viewMode === 'list' ? 'hidden-mobile flex' : 'hidden') : 'absolute inset-0 z-50 flex md:relative md:flex'}`}>
                       <EmailDetail
                         email={selectedEmail}
                         onBack={() => {
@@ -1034,15 +1023,7 @@ export default function InboxPage() {
           closable={false}
         >
           <div className="sidebar-container">
-            <div className="sidebar-header">
-              <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl shadow text-white" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
-                  <path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>
-                </svg>
-              </div>
-              <Title level={4} style={{ margin: 0 }}>MailBoard</Title>
-            </div>
+            <div style={{ height: '16px' }} />
             <div className="sidebar-content">
               <div style={{ padding: '0 8px 16px 8px' }}>
                 <Button
@@ -1099,9 +1080,9 @@ export default function InboxPage() {
             receivedAt: replyToEmail.receivedAt
           } : undefined}
         />
-        <KeyboardHelpModal 
-          visible={isKeyboardHelpVisible} 
-          onClose={() => setIsKeyboardHelpVisible(false)} 
+        <KeyboardHelpModal
+          visible={isKeyboardHelpVisible}
+          onClose={() => setIsKeyboardHelpVisible(false)}
         />
       </Layout>
     </ProtectedRoute>
