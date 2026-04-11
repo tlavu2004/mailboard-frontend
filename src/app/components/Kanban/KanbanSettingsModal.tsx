@@ -24,6 +24,7 @@ interface KanbanSettingsModalProps {
   onColumnsChanged: () => void;
   initialSelectedColumnId?: string;
   triggerAddOnOpen?: boolean;
+  columnCounts?: Record<string, number>;
 }
 
 // Sortable item wrapper with new design
@@ -76,7 +77,8 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({
   onClose, 
   onColumnsChanged, 
   initialSelectedColumnId,
-  triggerAddOnOpen
+  triggerAddOnOpen,
+  columnCounts = {}
 }) => {
   const [columns, setColumns] = useState<KanbanColumn[]>([]);
   const [gmailLabels, setGmailLabels] = useState<GmailLabel[]>([]);
@@ -243,6 +245,13 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({
       return;
     }
     
+    // Check if column is empty
+    const count = columnCounts[editingColumn.key] || 0;
+    if (count > 0) {
+      message.warning(`Cannot delete column "${editingColumn.label}" because it still contains ${count} emails. Please move or delete the emails first.`);
+      return;
+    }
+    
     const backup = columns;
     setColumns(prev => prev.filter(col => col.id !== editingColumn.id));
     setEditingColumn(null);
@@ -331,19 +340,31 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({
             </div>
             
             <div className="p-4 md:p-6 bg-white border-t border-gray-100 mt-auto">
-              <Tooltip title={(!editingColumn || isCreating) ? "Select a column to delete" : (editingColumn.isDefault ? "Safety: Default columns cannot be deleted" : "Delete this column and all its email mappings")}>
-                <button 
-                  onClick={handleDeleteColumn}
-                  disabled={!editingColumn || isCreating || editingColumn.isDefault}
-                  className={`w-full py-3 md:py-3.5 text-sm font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all border ${
-                    (!editingColumn || isCreating || editingColumn.isDefault)
-                      ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed'
-                      : 'bg-red-50 text-red-600 border-red-100 hover:bg-red-600 hover:text-white hover:border-red-600'
-                  }`}
-                >
-                  <Trash2 size={16} /> Delete Column
-                </button>
-              </Tooltip>
+              {(() => {
+                const count = columnCounts[editingColumn?.key || ''] || 0;
+                const isDeletable = editingColumn && !isCreating && !editingColumn.isDefault && count === 0;
+                let tooltip = "Select a column to delete";
+                if (isCreating) tooltip = "Save current column before deleting others";
+                else if (editingColumn?.isDefault) tooltip = "Safety: Default columns cannot be deleted";
+                else if (count > 0) tooltip = `Cannot delete: Column has ${count} emails. Empty it first.`;
+                else if (editingColumn) tooltip = "Delete this column permanently";
+
+                return (
+                  <Tooltip title={tooltip}>
+                    <button 
+                      onClick={handleDeleteColumn}
+                      disabled={!isDeletable}
+                      className={`w-full py-3 md:py-3.5 text-sm font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all border ${
+                        !isDeletable
+                          ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed'
+                          : 'bg-red-50 text-red-600 border-red-100 hover:bg-red-600 hover:text-white hover:border-red-600'
+                      }`}
+                    >
+                      <Trash2 size={16} /> Delete Column
+                    </button>
+                  </Tooltip>
+                );
+              })()}
             </div>
           </div>
 

@@ -472,6 +472,10 @@ export default function KanbanBoard({
         onColumnsChanged={fetchColumnsMeta}
         initialSelectedColumnId={initialSelectedColumnId}
         triggerAddOnOpen={triggerAddOnOpen}
+        columnCounts={Object.keys(columns).reduce((acc, key) => {
+          acc[key] = columns[key]?.length || 0;
+          return acc;
+        }, {} as Record<string, number>)}
       />
     </div>
   );
