@@ -11,7 +11,7 @@ import {
   ClockCircleOutlined,
   ProjectOutlined,
   TagOutlined,
-  HolderOutlined
+  HolderOutlined,
 } from '@ant-design/icons';
 import { Empty } from 'antd';
 
@@ -58,7 +58,12 @@ function KanbanColumn({ id, columnKey, label, color, cards, onRefresh, onSnooze,
     transform, 
     transition,
     isDragging 
-  } = useSortable({ id });
+  } = useSortable({
+    // Prefix ensures this ID never overlaps with card IDs in dnd-kit's SortableContext
+    id: `col-${id}`,
+    // Tag type so DndContext can distinguish columns from cards even if IDs overlap
+    data: { type: 'column', columnKey },
+  });
 
   // Use columnKey as droppable ID so it matches the columns state (e.g. "INBOX", "TODO")
   const { setNodeRef: setDroppableRef } = useDroppable({ id: columnKey });
@@ -79,7 +84,7 @@ function KanbanColumn({ id, columnKey, label, color, cards, onRefresh, onSnooze,
     <div 
       ref={setSortableRef}
       style={sortableStyle}
-      className={`relative flex h-full w-[380px] shrink-0 flex-col rounded-2xl px-4 py-5 border border-gray-100 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.08)] transition-all ${bgClass} ${isDragging ? 'rotate-1 border-blue-200' : ''}`} 
+      className={`relative flex h-full w-[380px] shrink-0 flex-col rounded-2xl px-4 py-5 border border-gray-100 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.08)] transition-all ${bgClass} ${isDragging ? 'rotate-1 border-blue-200 scale-[1.02]' : ''}`} 
     >
       <div 
         style={bgStyle} 
@@ -91,19 +96,20 @@ function KanbanColumn({ id, columnKey, label, color, cards, onRefresh, onSnooze,
       
       {/* Header */}
       <div className="mb-4 flex items-center justify-between px-2">
-        <div className="flex items-center gap-2 group">
-            {/* Drag Handle */}
+        <div className="flex items-center gap-2">
+            {/* Drag Handle - left-click here to reorder columns */}
             <div 
               {...attributes} 
               {...listeners} 
               className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 transition-colors p-1 -ml-2"
+              title="Drag to reorder column"
             >
               <HolderOutlined />
             </div>
             <span className={`text-xl ${config.iconColor}`}>
                {config.icon}
             </span>
-            <h3 className="text-lg font-bold text-gray-700 m-0 cursor-default">{label}</h3>
+            <h3 className="text-lg font-bold text-gray-700 m-0 cursor-default select-none">{label}</h3>
         </div>
         <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${config.badgeColor}`}>
             {cards.length}

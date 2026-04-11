@@ -70,6 +70,7 @@ export default function InboxPage() {
   const [kanbanSettingsOpen, setKanbanSettingsOpen] = useState(false);
   const [editingColumnId, setEditingColumnId] = useState<string | undefined>(undefined);
   const [autoAddColumn, setAutoAddColumn] = useState(false);
+  const [triggerAddColumn, setTriggerAddColumn] = useState(false);
   const [listWidth, setListWidth] = useState(400);
   const [isResizing, setIsResizing] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -969,7 +970,15 @@ export default function InboxPage() {
                         sortMode={sortMode}
                         accountId={accountId}
                         settingsOpen={kanbanSettingsOpen}
-                        onSettingsClose={() => setKanbanSettingsOpen(false)}
+                        onSettingsClose={() => {
+                          setKanbanSettingsOpen(false);
+                          setTriggerAddColumn(false);
+                        }}
+                        onAddColumnClick={() => {
+                          setTriggerAddColumn(true);
+                          setKanbanSettingsOpen(true);
+                        }}
+                        triggerAddOnOpen={triggerAddColumn}
                       />
                     )}
                   </div>

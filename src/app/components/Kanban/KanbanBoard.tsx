@@ -10,7 +10,6 @@ import {
   DragOverlay,
   DragEndEvent,
   DragStartEvent,
-  rectIntersection,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -65,6 +64,7 @@ export default function KanbanBoard({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeIsColumn, setActiveIsColumn] = useState(false); // track dragged type to avoid ID conflicts
   const [syncLoading, setSyncLoading] = useState(false);
 
   // Fetch only column metadata (lighter than full board)
@@ -185,7 +185,8 @@ export default function KanbanBoard({
     if (foundByCard) return foundByCard;
 
     // 3. Check if ID is a column DB ID (from meta)
-    const foundMeta = meta.find(m => m.id === id);
+    const cleanId = id.startsWith('col-') ? id.replace('col-', '') : id;
+    const foundMeta = meta.find(m => m.id === cleanId);
     if (foundMeta) return foundMeta.key;
 
     return undefined;
@@ -193,6 +194,8 @@ export default function KanbanBoard({
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
+    // Use data.type to distinguish columns from cards — avoids false match when IDs overlap
+    setActiveIsColumn(event.active.data.current?.type === 'column');
   };
 
   const handleDragOver = (event: any) => {
@@ -203,8 +206,11 @@ export default function KanbanBoard({
     if (!overId) return;
 
     // PROTECTION: If we are dragging a column, don't process card-over logic
-    const isActiveColumn = meta.some(m => m.id === activeIdVal);
+    const isActiveColumn = active.data.current?.type === 'column';
     if (isActiveColumn) return;
+
+    // Also skip if over element is another column (not a card target)
+    const isOverColumn = over?.data.current?.type === 'column' || overId in columns;
 
     // Find containers
     const activeContainer = findContainer(activeIdVal, columns);
@@ -224,7 +230,6 @@ export default function KanbanBoard({
 
       let newIndex;
       // Determine if we are over a column itself or a card inside it
-      const isOverColumn = meta.some(m => m.id === overId) || overId in prev;
       
       if (isOverColumn) {
         newIndex = overItems.length + 1;
@@ -285,15 +290,19 @@ export default function KanbanBoard({
     setActiveId(null);
 
     if (!over) return;
-
     const overId = over.id as string;
 
-    // Check if we are dragging a COLUMN or a CARD
-    const isActiveColumn = meta.some(m => m.id === activeIdVal);
+    // Check if we are dragging a COLUMN or a CARD — use data.type, not ID comparison
+    const isActiveColumn = active.data.current?.type === 'column';
+    const cleanActiveId = activeIdVal.startsWith('col-') ? activeIdVal.replace('col-', '') : activeIdVal;
+    
+    setActiveIsColumn(false);
     if (isActiveColumn) {
-      if (activeIdVal === overId) return;
-      const oldIndex = meta.findIndex(m => m.id === activeIdVal);
-      const newIndex = meta.findIndex(m => m.id === overId);
+      const cleanOverId = overId.startsWith('col-') ? overId.replace('col-', '') : overId;
+      if (cleanActiveId === cleanOverId) return;
+      
+      const oldIndex = meta.findIndex(m => m.id === cleanActiveId);
+      const newIndex = meta.findIndex(m => m.id === cleanOverId);
       if (newIndex === -1) return; // Dropped over something that isn't a column
 
       const newMetaOrder = arrayMove(meta, oldIndex, newIndex);
@@ -355,32 +364,35 @@ export default function KanbanBoard({
   const renderActiveOverlay = () => {
     if (!activeId) return null;
     
-    // 1. Check if it's a column
-    const foundMeta = meta.find(m => m.id === activeId);
-    if (foundMeta) {
-      return (
-        <KanbanColumnComponent
-          id={foundMeta.id}
-          columnKey={foundMeta.key}
-          label={foundMeta.label}
-          color={foundMeta.color}
-          cards={processedColumns[foundMeta.key] || []}
-          onRefresh={() => {}}
-          onSnooze={() => {}}
-          onCardClick={() => {}}
-        />
-      );
+    // 1. Check if it's a column (use activeIsColumn state, NOT meta.find by ID)
+    if (activeIsColumn) {
+      const cleanId = activeId.startsWith('col-') ? activeId.replace('col-', '') : activeId;
+      const foundMeta = meta.find(m => m.id === cleanId);
+      if (foundMeta) {
+        return (
+          <KanbanColumnComponent
+            id={foundMeta.id}
+            columnKey={foundMeta.key}
+            label={foundMeta.label}
+            color={foundMeta.color}
+            cards={processedColumns[foundMeta.key] || []}
+            onRefresh={() => {}}
+            onSnooze={() => {}}
+            onCardClick={() => {}}
+          />
+        );
+      }
     }
 
     // 2. Otherwise it's a card
-        for (const key in columns) {
-          const found = columns[key].find(c => c.id === activeId);
-          if (found) return (
-            <div style={{ pointerEvents: 'none' }}>
-               <KanbanCard card={found} onRefresh={() => { }} onSnooze={() => { }} onClick={() => { }} />
-            </div>
-          );
-        }
+    for (const key in columns) {
+      const found = columns[key].find(c => c.id === activeId);
+      if (found) return (
+        <div style={{ pointerEvents: 'none' }}>
+           <KanbanCard card={found} onRefresh={() => { }} onSnooze={() => { }} onClick={() => { }} />
+        </div>
+      );
+    }
     return null;
   };
 
@@ -430,7 +442,7 @@ export default function KanbanBoard({
         onDragEnd={handleDragEnd}
       >
         <div className="flex gap-4 h-full min-w-fit pb-4">
-          <SortableContext items={meta.map(m => m.id)} strategy={horizontalListSortingStrategy}>
+          <SortableContext items={meta.map(m => `col-${m.id}`)} strategy={horizontalListSortingStrategy}>
             {meta.map((col) => (
               <KanbanColumnComponent
                 key={col.key}

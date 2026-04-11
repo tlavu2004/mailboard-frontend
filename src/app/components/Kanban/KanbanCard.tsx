@@ -29,7 +29,7 @@ function KanbanCard({ card, onRefresh, onSnooze, onClick }: KanbanCardProps) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: card.id });
+  } = useSortable({ id: card.id, data: { type: 'card' } });
 
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [summary, setSummary] = useState(card.summary);
@@ -111,6 +111,11 @@ function KanbanCard({ card, onRefresh, onSnooze, onClick }: KanbanCardProps) {
       style={style}
       {...attributes}
       {...listeners}
+      data-dnd-type="card"
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation(); // Prevent right-click from triggering column drag
+      }}
       // Use local isRead for immediate feedback
       className={`group relative mb-3 w-full rounded-xl bg-white p-4 shadow-sm hover:shadow-md transition-all border border-gray-100 select-none border-l-[4px] cursor-grab active:cursor-grabbing ${isRead ? 'border-l-gray-300' : 'border-l-blue-500'}`}
     >

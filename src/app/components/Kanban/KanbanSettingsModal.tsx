@@ -330,8 +330,8 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({
               </button>
             </div>
             
-            <div className="p-4 md:p-6 bg-white border-t border-gray-100">
-              <Tooltip title={(!editingColumn || isCreating) ? "Select a column to delete" : (editingColumn.isDefault ? "Safety: Default columns cannot be deleted" : "")}>
+            <div className="p-4 md:p-6 bg-white border-t border-gray-100 mt-auto">
+              <Tooltip title={(!editingColumn || isCreating) ? "Select a column to delete" : (editingColumn.isDefault ? "Safety: Default columns cannot be deleted" : "Delete this column and all its email mappings")}>
                 <button 
                   onClick={handleDeleteColumn}
                   disabled={!editingColumn || isCreating || editingColumn.isDefault}
@@ -359,7 +359,8 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({
             </button>
 
             {editingColumn || isCreating ? (
-              <div className="flex-1 flex flex-col p-6 md:p-12">
+              <>
+                <div className="flex-1 flex flex-col p-6 md:p-12 overflow-y-auto">
                 {/* Mobile back button */}
                 <button 
                   onClick={handleBackToList}
@@ -440,20 +441,21 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({
                       <span className="text-sm text-gray-500">Choose any color</span>
                     </div>
                   </div>
-
-                  {/* Save Button */}
-                  <div className="pt-4 md:pt-6">
-                    <button
-                      onClick={handleUpdateColumn}
-                      disabled={saving}
-                      className="flex items-center gap-2 px-6 md:px-8 py-2.5 md:py-3 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-all shadow-sm disabled:opacity-50"
-                    >
-                      {saving ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> : <Save size={14} />} 
-                      {saving ? 'Creating...' : (isCreating ? 'Create Column' : 'Save Changes')}
-                    </button>
                   </div>
                 </div>
-              </div>
+
+                {/* Footer Save Button (Fixed) */}
+                <div className="p-6 md:px-12 md:py-8 bg-gray-50/50 border-t border-gray-100 flex justify-end">
+                  <button
+                    onClick={handleUpdateColumn}
+                    disabled={saving}
+                    className="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 disabled:opacity-50"
+                  >
+                    {saving ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> : <Save size={16} />} 
+                    {saving ? 'Creating...' : (isCreating ? 'Create Column' : 'Save Changes')}
+                  </button>
+                </div>
+              </>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-center p-8 md:p-12">
                 <div className="w-16 h-16 md:w-24 md:h-24 bg-gray-50 rounded-2xl md:rounded-3xl flex items-center justify-center text-gray-200 mb-4 md:mb-6">
