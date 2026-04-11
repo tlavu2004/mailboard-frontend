@@ -15,8 +15,12 @@ export interface Attachment {
   id: string;
   filename: string;
   size: number;
-  mimeType: string;
+  mimeType?: string;
+  contentType?: string;
   url: string;
+  serverAttachmentId?: string;
+  contentId?: string;
+  inline?: boolean;
 }
 
 export interface Email {

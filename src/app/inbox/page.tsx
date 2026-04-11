@@ -579,14 +579,9 @@ export default function InboxPage() {
 
   const handleDownloadAttachment = async (emailId: string, attachmentId: string, filename: string) => {
     try {
-      // Use apiClient to leverage automatic auth header and token refresh mechanisms
-      // The URL returned by service includes the full path, but apiClient uses baseURL.
-      // We need to parse relative path or check if apiClient handles absolute URLs (it usually does if valid).
-      // However, emailService.getAttachmentUrl returns full URL from env. 
-      // Let's rely on apiClient handling absolute URL override or extract path.
-      // Easiest is to reconstruct relative path manually or just pass full URL if axios supports it (it does).
-
-      const url = emailService.getAttachmentUrl(emailId, attachmentId);
+      // Find attachment in selected email to get the pre-calculated URL from backend
+      const attachment = selectedEmail?.attachments?.find(a => a.id === (attachmentId as any) || a.serverAttachmentId === attachmentId);
+      const url = attachment?.url || emailService.getAttachmentUrl(emailId, attachmentId);
 
       // Axios request with blob response type
       const response = await apiClient.get(url, {
@@ -676,7 +671,6 @@ export default function InboxPage() {
       };
 
       setSelectedEmail(partialEmail);
-      setShowMobileDetail(true);
 
       // Mark as read in backend
       emailService.markAsRead(card.id);
@@ -994,9 +988,9 @@ export default function InboxPage() {
                     />
                   )}
 
-                  {/* Right Column: Detail */}
-                  {selectedEmail && (
-                    <div className={`flex-1 bg-white overflow-y-auto ${!showMobileDetail ? (viewMode === 'list' ? 'hidden-mobile flex' : 'hidden') : 'absolute inset-0 z-50 flex md:relative md:flex'}`}>
+                  {/* Right Column: Detail (List View only) */}
+                  {selectedEmail && viewMode === 'list' && (
+                    <div className={`flex-1 bg-white overflow-y-auto ${!showMobileDetail ? 'hidden-mobile flex' : 'absolute inset-0 z-50 flex md:relative md:flex'}`}>
                       <EmailDetail
                         email={selectedEmail}
                         onBack={() => {
@@ -1012,7 +1006,7 @@ export default function InboxPage() {
                         loadingSummary={loadingSummary}
                         onDownloadAttachment={handleDownloadAttachment}
                         showMobileDetail={showMobileDetail}
-                        showBackButton={viewMode === 'kanban' || isMobile}
+                        showBackButton={isMobile}
                       />
                     </div>
                   )}
@@ -1093,6 +1087,45 @@ export default function InboxPage() {
           visible={isKeyboardHelpVisible}
           onClose={() => setIsKeyboardHelpVisible(false)}
         />
+
+        {/* Kanban Email Detail Modal */}
+        <Modal
+          open={!!selectedEmail && viewMode === 'kanban'}
+          onCancel={() => {
+            setSelectedEmail(null);
+            setShowMobileDetail(false);
+          }}
+          footer={null}
+          width={1000}
+          centered
+          styles={{ 
+            body: { 
+              padding: '0 24px 24px 24px', 
+              maxHeight: '85vh', 
+              overflowY: 'auto',
+              borderRadius: '12px'
+            } 
+          }}
+          className="email-detail-modal"
+          destroyOnClose
+        >
+          {selectedEmail && (
+            <EmailDetail
+              email={selectedEmail}
+              onBack={() => setSelectedEmail(null)}
+              onStar={handleStar}
+              onDelete={handleDelete}
+              onReply={handleReply}
+              onForward={handleForward}
+              onSnooze={handleSnooze}
+              onSummarize={handleSummarize}
+              loadingSummary={loadingSummary}
+              onDownloadAttachment={handleDownloadAttachment}
+              showMobileDetail={false}
+              showBackButton={false}
+            />
+          )}
+        </Modal>
       </Layout>
     </ProtectedRoute>
   );
