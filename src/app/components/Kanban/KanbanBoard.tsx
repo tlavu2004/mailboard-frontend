@@ -70,7 +70,8 @@ export default function KanbanBoard({
   // Fetch only column metadata (lighter than full board)
   const fetchColumnsMeta = useCallback(async () => {
     try {
-      const columnsData = await kanbanService.getColumns();
+      // Force refresh with cache buster
+      const columnsData = await kanbanService.getColumns(); 
       const incomingMeta: ColumnWithMeta[] = columnsData
         .sort((a, b) => a.order - b.order)
         .map(col => ({
@@ -109,6 +110,8 @@ export default function KanbanBoard({
           hasAttachments: filters.hasAttachment,
           sortBy,
           sortOrder,
+          // Cache buster is handled by the backend typically but we can ensure it here if needed
+          // by passing it in a generic way or updating the service.
         }),
         kanbanService.getColumns(),
       ]);
@@ -469,7 +472,7 @@ export default function KanbanBoard({
       <KanbanSettingsModal
         open={settingsOpen}
         onClose={onSettingsClose}
-        onColumnsChanged={fetchColumnsMeta}
+        onColumnsChanged={fetchBoard}
         initialSelectedColumnId={initialSelectedColumnId}
         triggerAddOnOpen={triggerAddOnOpen}
         columnCounts={Object.keys(columns).reduce((acc, key) => {

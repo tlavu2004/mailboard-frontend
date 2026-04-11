@@ -74,6 +74,9 @@ export const kanbanService = {
       if (opts.hasAttachments) params.hasAttachments = true;
       if (opts.sortBy) params.sortBy = opts.sortBy;
       if (opts.sortOrder) params.sortOrder = opts.sortOrder;
+      params.t = Date.now();
+    } else {
+      params.t = Date.now();
     }
 
     const response = await apiClient.get<{ columns: Record<string, any[]> }>('kanban', { params });
@@ -114,7 +117,7 @@ export const kanbanService = {
   // ========== Column Configuration ==========
 
   getColumns: async (): Promise<KanbanColumn[]> => {
-    const response = await apiClient.get<{ columns: any[] }>('kanban/columns');
+    const response = await apiClient.get<{ columns: any[] }>('kanban/columns', { params: { t: Date.now() } });
     return (response.data.columns || []).map(transformColumn);
   },
 
