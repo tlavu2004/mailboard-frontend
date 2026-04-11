@@ -72,6 +72,7 @@ export default function InboxPage() {
   const [autoAddColumn, setAutoAddColumn] = useState(false);
   const [listWidth, setListWidth] = useState(400);
   const [isResizing, setIsResizing] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -364,6 +365,15 @@ export default function InboxPage() {
       message.error({ content: 'Repair failed', key: 'repairing' });
     }
   };
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 992);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Resizing logic
   useEffect(() => {
@@ -665,6 +675,7 @@ export default function InboxPage() {
       };
 
       setSelectedEmail(partialEmail);
+      setShowMobileDetail(true);
 
       // Mark as read in backend
       emailService.markAsRead(card.id);
@@ -758,15 +769,15 @@ export default function InboxPage() {
         {/* TOP TOOLBAR - Minimalist & Stable */}
         <Header className="top-toolbar">
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <Button
-              className="hidden-desktop"
-              icon={<MenuOutlined />}
-              onClick={() => setMobileDrawerOpen(true)}
-              type="text"
-            />
-            <Title level={4} style={{ margin: 0, color: '#1a1a1a', letterSpacing: '-0.5px' }}>
-              {isSearching ? 'Search Results' : (mailboxes.find(m => m.id === selectedMailbox)?.name || 'Inboxes')}
-            </Title>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }} onClick={() => handleMailboxSelect('INBOX')}>
+              <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg shadow-sm text-white" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+                  <path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>
+                </svg>
+              </div>
+              <Title level={4} style={{ margin: 0, color: '#1a1a1a', letterSpacing: '-0.5px', fontWeight: 700 }}>MailBoard</Title>
+            </div>
           </div>
 
           <div style={{ flex: 1, maxWidth: '600px', margin: '0 24px' }}>
@@ -779,14 +790,7 @@ export default function InboxPage() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Badge dot={syncLoading} offset={[-2, 6]}>
-              <Button 
-                icon={<CloudSyncOutlined />} 
-                onClick={handleSync} 
-                loading={syncLoading}
-                type="text"
-              />
-            </Badge>
+            {/* Sync button removed as it is now in FilterBar */}
           </div>
         </Header>
 
@@ -999,7 +1003,7 @@ export default function InboxPage() {
                         email={selectedEmail}
                         onBack={() => {
                           setShowMobileDetail(false);
-                          if (viewMode === 'kanban') setSelectedEmail(null);
+                          setSelectedEmail(null);
                         }}
                         onStar={handleStar}
                         onDelete={handleDelete}
@@ -1010,7 +1014,7 @@ export default function InboxPage() {
                         loadingSummary={loadingSummary}
                         onDownloadAttachment={handleDownloadAttachment}
                         showMobileDetail={showMobileDetail}
-                        showBackButton={viewMode === 'kanban' || showMobileDetail}
+                        showBackButton={viewMode === 'kanban' || isMobile}
                       />
                     </div>
                   )}
