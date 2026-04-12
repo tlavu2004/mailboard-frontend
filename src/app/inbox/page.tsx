@@ -579,9 +579,9 @@ export default function InboxPage() {
 
   const handleDownloadAttachment = async (emailId: string, attachmentId: string, filename: string) => {
     try {
-      // Find attachment in selected email to get the pre-calculated URL from backend
-      const attachment = selectedEmail?.attachments?.find(a => a.id === (attachmentId as any) || a.serverAttachmentId === attachmentId);
-      const url = attachment?.url || emailService.getAttachmentUrl(emailId, attachmentId);
+      // Use the URL from the backend if available, otherwise construct the new format
+      const attachment = selectedEmail?.attachments?.find(a => a.id === attachmentId || a.serverAttachmentId === attachmentId);
+      const url = attachment?.url || `emails/${emailId}/attachments/${attachmentId}/download`;
 
       // Axios request with blob response type
       const response = await apiClient.get(url, {
@@ -946,7 +946,12 @@ export default function InboxPage() {
                                   }}
                                 >
                                   <div className="flex justify-between items-start mb-1">
-                                    <Text strong={!email.isRead} style={{ fontSize: '14px' }}>{email.from.name}</Text>
+                                    <Space size="small">
+                                      <Text strong={!email.isRead} style={{ fontSize: '14px' }}>{email.from.name}</Text>
+                                      {email.hasAttachments && (
+                                        <PaperClipOutlined style={{ fontSize: '12px', color: '#8c8c8c' }} />
+                                      )}
+                                    </Space>
                                     <Text type="secondary" style={{ fontSize: '11px' }}>{formatDate(email.receivedAt)}</Text>
                                   </div>
                                   <Text strong={!email.isRead} className="block text-sm truncate">{email.subject}</Text>

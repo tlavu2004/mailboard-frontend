@@ -10,6 +10,8 @@ import {
   ReloadOutlined,
   RobotOutlined,
   ClockCircleOutlined,
+  DownloadOutlined,
+  FileOutlined,
 } from '@ant-design/icons';
 import { Email } from '@/types/email';
 import SnoozePopover from './SnoozePopover';
@@ -86,7 +88,9 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
   React.useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data && event.data.type === 'MB_RESIZE' && typeof event.data.height === 'number') {
-        setIframeHeight(Math.max(event.data.height + 20, 400));
+        // Sanity check: prevent runaway height if the bridge reports massive values (V10.20)
+        const cappedHeight = Math.min(event.data.height + 20, 10000);
+        setIframeHeight(Math.max(cappedHeight, 400));
       }
     };
 
@@ -203,42 +207,42 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
           </Space>
 
           {email.attachments && email.attachments.length > 0 && (
-            <Card title="Attachments" size="small">
-              <Space direction="vertical" style={{ width: '100%' }}>
-                {email.attachments.map((attachment) => (
-                  <div
-                    key={attachment.id}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '8px',
-                      background: '#f6f8fa',
-                      borderRadius: '4px',
-                    }}
-                  >
-                    <Space>
-                      <PaperClipOutlined />
-                      <div>
-                        <Text strong>{attachment.filename}</Text>
-                        <br />
-                        <Text type="secondary" style={{ fontSize: '12px' }}>
-                          {formatFileSize(attachment.size)}
-                        </Text>
-                      </div>
-                    </Space>
-                    <Button
-                      size="small"
-                      onClick={() =>
-                        onDownloadAttachment(email.id, attachment.id, attachment.filename)
-                      }
-                    >
-                      Download
-                    </Button>
-                  </div>
-                ))}
-              </Space>
-            </Card>
+            <div style={{ 
+              padding: '10px 16px', 
+              background: '#f8fafc', 
+              borderRadius: '10px', 
+              border: '1px solid #eef2f6',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '8px',
+              alignItems: 'center'
+            }}>
+              <Text type="secondary" style={{ fontSize: '13px' }}><PaperClipOutlined /> Attachments:</Text>
+              {email.attachments.map(at => (
+                <div 
+                  key={at.id}
+                  style={{ 
+                    padding: '2px 10px', 
+                    background: '#fff', 
+                    border: '1px solid #edf2f7', 
+                    borderRadius: '20px',
+                    fontSize: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    color: '#667eea',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => {
+                    // Smooth scroll to bottom card
+                    const el = document.querySelector('.attachments-divider');
+                    el?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                >
+                  <FileOutlined style={{ fontSize: '10px' }} /> {at.filename}
+                </div>
+              ))}
+            </div>
           )}
 
           {(email.summary || loadingSummary) && (
@@ -262,7 +266,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             </Card>
           )}
 
-          <Card>
+          <Card style={{ borderRadius: '12px', overflow: 'hidden' }}>
             {!email.body ? (
                 <div style={{ textAlign: 'center', padding: '20px' }}>
                     <Spin size="large" tip="Loading content..." />
@@ -275,13 +279,74 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                     width: '100%',
                     height: `${iframeHeight}px`,
                     border: 'none',
-                    overflow: 'hidden',
+                    overflowY: 'hidden',
+                    overflowX: 'auto',
                   }}
+                  scrolling="auto"
                   sandbox="allow-scripts"
                   referrerPolicy="no-referrer"
                 />
             )}
           </Card>
+
+          <div className="attachments-divider" style={{ margin: '16px 0' }} />
+
+          {email.attachments && email.attachments.length > 0 && (
+            <Card 
+              size="small" 
+              title={<Space><PaperClipOutlined /> <Text strong>Attachments ({email.attachments.length})</Text></Space>}
+              className="attachments-card"
+              style={{ 
+                borderRadius: '12px', 
+                border: '1px solid #eef2f6',
+                background: '#f8fafc',
+                marginTop: '16px'
+              }}
+            >
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px' }}>
+                {email.attachments.map((attachment) => (
+                  <div
+                    key={attachment.id}
+                    className="attachment-item"
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      padding: '12px',
+                      background: '#fff',
+                      border: '1px solid #edf2f7',
+                      borderRadius: '10px',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '12px' }}>
+                      <div style={{ padding: '8px', background: '#f1f5f9', borderRadius: '8px', color: '#667eea' }}>
+                        <FileOutlined />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Text strong className="block truncate" style={{ fontSize: '13px' }}>{attachment.filename}</Text>
+                        <Text type="secondary" style={{ fontSize: '11px' }}>
+                          {formatFileSize(attachment.size)}
+                        </Text>
+                      </div>
+                    </div>
+                    <Button
+                      type="default"
+                      size="small"
+                      block
+                      icon={<DownloadOutlined />}
+                      onClick={() =>
+                        onDownloadAttachment(email.id, attachment.id, attachment.filename)
+                      }
+                      style={{ borderRadius: '6px', fontSize: '12px' }}
+                    >
+                      Download
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
         </Space>
       </div>
     </div>
