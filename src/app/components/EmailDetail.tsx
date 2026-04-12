@@ -81,6 +81,19 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
     }
   };
 
+  const [iframeHeight, setIframeHeight] = React.useState<number>(400);
+  
+  React.useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'MB_RESIZE' && typeof event.data.height === 'number') {
+        setIframeHeight(Math.max(event.data.height + 20, 400));
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
   if (!email) {
     return (
       <Empty
@@ -260,20 +273,12 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                   title="Email Content"
                   style={{
                     width: '100%',
-                    minHeight: '400px',
+                    height: `${iframeHeight}px`,
                     border: 'none',
                     overflow: 'hidden',
                   }}
-                  sandbox="allow-same-origin allow-scripts"
+                  sandbox="allow-scripts"
                   referrerPolicy="no-referrer"
-                  onLoad={(e) => {
-                    // Auto-resize iframe to content height
-                    const iframe = e.target as HTMLIFrameElement;
-                    if (iframe.contentDocument) {
-                      const height = iframe.contentDocument.body.scrollHeight;
-                      iframe.style.height = `${Math.max(height + 20, 400)}px`;
-                    }
-                  }}
                 />
             )}
           </Card>
