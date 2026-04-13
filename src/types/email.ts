@@ -21,6 +21,7 @@ export interface Attachment {
   serverAttachmentId?: string;
   contentId?: string;
   inline?: boolean;
+  externalUrl?: string;
 }
 
 export interface Email {

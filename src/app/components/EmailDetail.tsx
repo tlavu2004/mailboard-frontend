@@ -12,6 +12,8 @@ import {
   ClockCircleOutlined,
   DownloadOutlined,
   FileOutlined,
+  CloudDownloadOutlined,
+  LinkOutlined,
 } from '@ant-design/icons';
 import { Email } from '@/types/email';
 import SnoozePopover from './SnoozePopover';
@@ -319,13 +321,18 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '12px' }}>
-                      <div style={{ padding: '8px', background: '#f1f5f9', borderRadius: '8px', color: '#667eea' }}>
-                        <FileOutlined />
+                      <div style={{ 
+                        padding: '8px', 
+                        background: attachment.externalUrl ? '#e6f7ff' : '#f1f5f9', 
+                        borderRadius: '8px', 
+                        color: attachment.externalUrl ? '#1890ff' : '#667eea' 
+                      }}>
+                        {attachment.externalUrl ? <CloudDownloadOutlined /> : <FileOutlined />}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <Text strong className="block truncate" style={{ fontSize: '13px' }}>{attachment.filename}</Text>
                         <Text type="secondary" style={{ fontSize: '11px' }}>
-                          {formatFileSize(attachment.size)}
+                          {attachment.externalUrl ? 'Cloud Storage' : formatFileSize(attachment.size)}
                         </Text>
                       </div>
                     </div>
@@ -333,13 +340,17 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                       type="default"
                       size="small"
                       block
-                      icon={<DownloadOutlined />}
-                      onClick={() =>
-                        onDownloadAttachment(email.id, attachment.id, attachment.filename)
-                      }
+                      icon={attachment.externalUrl ? <LinkOutlined /> : <DownloadOutlined />}
+                      onClick={() => {
+                        if (attachment.externalUrl) {
+                          window.open(attachment.externalUrl, '_blank');
+                        } else {
+                          onDownloadAttachment(email.id, attachment.id, attachment.filename);
+                        }
+                      }}
                       style={{ borderRadius: '6px', fontSize: '12px' }}
                     >
-                      Download
+                      {attachment.externalUrl ? 'Open Link' : 'Download'}
                     </Button>
                   </div>
                 ))}
