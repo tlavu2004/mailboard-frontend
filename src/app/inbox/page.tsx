@@ -23,6 +23,8 @@ import {
   MenuOutlined,
   PieChartOutlined,
   CloudSyncOutlined,
+  CloudOutlined,
+  LinkOutlined,
 } from '@ant-design/icons';
 import KanbanBoard from '@/app/components/Kanban/KanbanBoard';
 import SearchResults from '@/app/components/SearchResults';
@@ -666,6 +668,8 @@ export default function InboxPage() {
         isRead: card.isRead,
         isStarred: false,
         hasAttachments: card.hasAttachments,
+        hasCloudLinks: card.hasCloudLinks,
+        hasPhysicalAttachments: card.hasPhysicalAttachments,
         receivedAt: card.receivedAt,
         createdAt: card.receivedAt,
         summary: card.summary,
@@ -950,9 +954,15 @@ export default function InboxPage() {
                                   <div className="flex justify-between items-start mb-1">
                                     <Space size="small">
                                       <Text strong={!email.isRead} style={{ fontSize: '14px' }}>{email.from.name}</Text>
-                                      {email.hasAttachments && (
-                                        <PaperClipOutlined style={{ fontSize: '12px', color: '#8c8c8c' }} />
-                                      )}
+                                      {/* V10.35: Differentiated Icons in Inbox List */}
+                                      <div className="flex items-center gap-1">
+                                        {email.hasPhysicalAttachments && (
+                                          <PaperClipOutlined style={{ fontSize: '12px', color: '#8c8c8c' }} title="Physical files" />
+                                        )}
+                                        {email.hasCloudLinks && (
+                                          <CloudOutlined style={{ fontSize: '12px', color: '#1890ff' }} title="Cloud storage links" />
+                                        )}
+                                      </div>
                                     </Space>
                                     <Text type="secondary" style={{ fontSize: '11px' }}>{formatDate(email.receivedAt)}</Text>
                                   </div>

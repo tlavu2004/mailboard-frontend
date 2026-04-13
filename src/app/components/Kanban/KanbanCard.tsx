@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { RobotOutlined, ClockCircleOutlined, PaperClipOutlined, LoadingOutlined } from '@ant-design/icons';
+import { RobotOutlined, ClockCircleOutlined, PaperClipOutlined, LoadingOutlined, CloudOutlined, LinkOutlined } from '@ant-design/icons';
 import { Popover } from 'antd';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -153,12 +153,19 @@ function KanbanCard({ card, onRefresh, onSnooze, onClick }: KanbanCardProps) {
       {/* Footer Actions */}
       <div className="flex items-center justify-between mt-3 pt-2">
         <div className="flex items-center gap-2">
-          {/* Attachment Badge */}
-          {card.hasAttachments && (
-            <div className="flex items-center gap-1 bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-medium">
-              <PaperClipOutlined /> File
-            </div>
-          )}
+          {/* Attachment Badges - V10.34 Differentiated Icons */}
+          <div className="flex items-center gap-1">
+            {card.hasPhysicalAttachments && (
+              <div className="flex items-center gap-1 bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-medium" title="Physical file attachments">
+                <PaperClipOutlined /> File
+              </div>
+            )}
+            {card.hasCloudLinks && (
+              <div className="flex items-center gap-1 bg-blue-50 text-blue-600 px-2 py-1 rounded text-xs font-medium border border-blue-100" title="Cloud storage links (Drive, etc.)">
+                <CloudOutlined /> Link
+              </div>
+            )}
+          </div>
 
           {/* Functional Buttons - Minimalist */}
           <div className="flex items-center gap-1">

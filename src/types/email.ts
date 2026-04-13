@@ -42,6 +42,8 @@ export interface Email {
   isRead: boolean;
   isStarred: boolean;
   hasAttachments: boolean;
+  hasCloudLinks: boolean;
+  hasPhysicalAttachments: boolean;
   attachments?: Attachment[];
   receivedAt: string;
   createdAt: string;

@@ -18,6 +18,8 @@ export interface KanbanCardType {
   receivedAt: string;
   isRead: boolean;
   hasAttachments: boolean;
+  hasCloudLinks: boolean;
+  hasPhysicalAttachments: boolean;
   kanbanOrder?: number;
 }
 
@@ -43,6 +45,8 @@ const transformCard = (data: any): KanbanCardType => ({
   receivedAt: data.received_at,
   isRead: data.is_read,
   hasAttachments: data.has_attachments,
+  hasCloudLinks: data.has_cloud_links,
+  hasPhysicalAttachments: data.has_physical_attachments,
   kanbanOrder: data.kanban_order,
 });
 
