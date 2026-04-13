@@ -35,7 +35,8 @@ export const emailService = {
         unread: unread === undefined ? undefined : unread,
         hasAttachments: hasAttachments === undefined ? undefined : hasAttachments,
         sortBy,
-        sortOrder
+        sortOrder,
+        _t: Date.now() // Cache busting (V10.27)
       },
     });
     return response.data;
@@ -47,7 +48,9 @@ export const emailService = {
       return await mockEmailApi.getEmailById(emailId) as unknown as Email;
     }
     
-    const response = await apiClient.get<Email>(`emails/${emailId}`);
+    const response = await apiClient.get<Email>(`emails/${emailId}`, {
+      params: { _t: Date.now() } // Cache busting (V10.27)
+    });
     return response.data;
   },
 

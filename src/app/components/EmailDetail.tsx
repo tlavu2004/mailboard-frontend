@@ -108,51 +108,92 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
     );
   }
 
+  console.log('[EmailDetail] Rendering with email:', {
+    id: email.id,
+    subject: email.subject,
+    hasAttachments: email.hasAttachments,
+    attachmentsCount: email.attachments?.length,
+    summarySource: email.summarySource
+  });
+
+  // Alias sender and date for compatibility between list-view and detail-view DTOs (V10.27)
+  const getSenderInfo = () => {
+    // If it's an object {name, email}
+    if (typeof email.from === 'object' && email.from !== null) {
+      return {
+        name: email.from.name || (email as any).fromName,
+        email: email.from.email
+      };
+    }
+    // If it's a string, use fromName as name
+    return {
+      name: (email as any).fromName || (typeof email.from === 'string' ? email.from : 'Unknown Sender'),
+      email: typeof email.from === 'string' ? email.from : ''
+    };
+  };
+
+  const sender = getSenderInfo();
+  const toList = email.to || [];
+  const ccList = email.cc || [];
+  const displayDate = email.receivedAt || email.createdAt || (email as any).sentAt;
+
+  // Helper to render recipient strings regardless of DTO format (V10.28)
+  const renderRecipientList = (list: any[]) => {
+    return list.map((item: any) => {
+      if (typeof item === 'string') return item;
+      return item.email || item.name || '';
+    }).filter(Boolean).join(', ');
+  };
+
   return (
-    <div className={className} style={style}>
+    <div className={className} style={{ ...style, height: '100%', overflowY: 'auto' }}>
       {showBackButton && (
         <Button
           icon={<ArrowLeftOutlined />}
           onClick={onBack}
-          style={{ margin: '16px' }}
+          style={{ margin: '8px 16px' }}
           className="mobile-back-button"
         >
           Back
         </Button>
       )}
 
-      <div style={{ maxWidth: '900px', margin: '0 auto', padding: showMobileDetail ? '0 16px 16px' : '0' }}>
-        <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <div style={{ maxWidth: '900px', margin: '0 auto', padding: showMobileDetail ? '0 16px 16px' : '0 16px' }}>
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <div>
-            <Title level={3} style={{ marginTop: '20px', marginBottom: '24px' }}>{email.subject}</Title>
+            <Title level={3} style={{ marginTop: '12px', marginBottom: '16px' }}>{email.subject}</Title>
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <Avatar style={{ backgroundColor: '#667eea' }}>
-                  {email.from.name?.charAt(0) || email.from.email.charAt(0).toUpperCase()}
+                  {sender?.name?.charAt(0) || sender?.email?.charAt(0).toUpperCase() || '?'}
                 </Avatar>
                 <div>
-                  <Text strong>{email.from.name || email.from.email}</Text>
+                  <Text strong>{sender?.name || sender?.email || 'Unknown Sender'}</Text>
                   <br />
                   <Text type="secondary" style={{ fontSize: '12px' }}>
-                    {email.from.email}
+                    {sender?.email}
                   </Text>
                 </div>
               </div>
               <div>
                 <Text type="secondary">To: </Text>
-                <Text>{email.to.map((t) => t.email).join(', ')}</Text>
+                <Text>{renderRecipientList(toList) || 'No recipients'}</Text>
               </div>
-              {email.cc && email.cc.length > 0 && (
+              {ccList.length > 0 && (
                 <div>
                   <Text type="secondary">Cc: </Text>
-                  <Text>{email.cc.map((c) => c.email).join(', ')}</Text>
+                  <Text>{renderRecipientList(ccList)}</Text>
                 </div>
               )}
-              <Text type="secondary" style={{ fontSize: '12px' }}>
-                {new Date(email.receivedAt).toLocaleString()}
-              </Text>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <Text type="secondary" style={{ fontSize: '12px' }}>Date: </Text>
+                <Text type="secondary" style={{ fontSize: '12px' }}>
+                  {displayDate ? new Date(displayDate).toLocaleString() : 'No date'}
+                </Text>
+              </div>
             </Space>
           </div>
+
 
           <Space wrap>
             <Button type="primary" onClick={() => onReply && onReply(email)}>
@@ -206,45 +247,6 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             </Button>
           </Space>
 
-          {email.attachments && email.attachments.length > 0 && (
-            <div style={{ 
-              padding: '10px 16px', 
-              background: '#f8fafc', 
-              borderRadius: '10px', 
-              border: '1px solid #eef2f6',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '8px',
-              alignItems: 'center'
-            }}>
-              <Text type="secondary" style={{ fontSize: '13px' }}><PaperClipOutlined /> Attachments:</Text>
-              {email.attachments.map(at => (
-                <div 
-                  key={at.id}
-                  style={{ 
-                    padding: '2px 10px', 
-                    background: '#fff', 
-                    border: '1px solid #edf2f7', 
-                    borderRadius: '20px',
-                    fontSize: '12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    color: '#667eea',
-                    cursor: 'pointer'
-                  }}
-                  onClick={() => {
-                    // Smooth scroll to bottom card
-                    const el = document.querySelector('.attachments-divider');
-                    el?.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                >
-                  <FileOutlined style={{ fontSize: '10px' }} /> {at.filename}
-                </div>
-              ))}
-            </div>
-          )}
-
           {(email.summary || loadingSummary) && (
             <Card 
               size="small" 
@@ -266,9 +268,9 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             </Card>
           )}
 
-          <Card style={{ borderRadius: '12px', overflow: 'hidden' }}>
+          <Card size="small" bodyStyle={{ padding: 0 }} style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #eef2f6' }}>
             {!email.body ? (
-                <div style={{ textAlign: 'center', padding: '20px' }}>
+                <div style={{ textAlign: 'center', padding: '40px' }}>
                     <Spin size="large" tip="Loading content..." />
                 </div>
             ) : (
@@ -289,8 +291,6 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             )}
           </Card>
 
-          <div className="attachments-divider" style={{ margin: '16px 0' }} />
-
           {email.attachments && email.attachments.length > 0 && (
             <Card 
               size="small" 
@@ -299,8 +299,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
               style={{ 
                 borderRadius: '12px', 
                 border: '1px solid #eef2f6',
-                background: '#f8fafc',
-                marginTop: '16px'
+                background: '#f8fafc'
               }}
             >
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px' }}>

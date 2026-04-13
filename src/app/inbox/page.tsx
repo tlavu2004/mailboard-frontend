@@ -314,11 +314,13 @@ export default function InboxPage() {
     setSelectedEmail(email);
     setShowMobileDetail(true);
 
-    // If body is missing (e.g. from metadata-only search), fetch full details
-    if (!email.body) {
+    // If body is missing OR if we expect attachments but don't have them yet, fetch full details
+    const needsDetail = !email.body || (email.hasAttachments && (!email.attachments || email.attachments.length === 0));
+    
+    if (needsDetail) {
       try {
         const fullEmail = await emailService.getEmailDetail(email.id);
-        setSelectedEmail(fullEmail);
+        setSelectedEmail(prev => (prev ? { ...prev, ...fullEmail } : fullEmail));
       } catch (error) {
         console.error('Failed to load full email body', error);
         message.error('Failed to load email content');
