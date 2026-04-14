@@ -100,6 +100,14 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
+  // V20: Force reset iframe height to baseline when switching emails to prevent "height memory" (Leaking tall layouts)
+  React.useEffect(() => {
+    if (email?.id) {
+      console.log('[EmailDetail] Resetting iframe height for new email ID:', email.id);
+      setIframeHeight(400);
+    }
+  }, [email?.id]);
+
   if (!email) {
     return (
       <Empty
