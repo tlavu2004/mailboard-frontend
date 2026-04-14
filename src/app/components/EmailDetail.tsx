@@ -14,6 +14,7 @@ import {
   FileOutlined,
   CloudDownloadOutlined,
   LinkOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import { Email } from '@/types/email';
 import SnoozePopover from './SnoozePopover';
@@ -170,42 +171,53 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
 
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: showMobileDetail ? '0 16px 16px' : '0 16px' }}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <div>
-            <Title level={3} style={{ marginTop: '12px', marginBottom: '16px' }}>{email.subject}</Title>
-            <Space direction="vertical" size="small" style={{ width: '100%' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <Avatar style={{ backgroundColor: '#667eea' }}>
-                  {sender?.name?.charAt(0) || sender?.email?.charAt(0).toUpperCase() || '?'}
-                </Avatar>
-                <div>
-                  <Text strong>{sender?.name || sender?.email || 'Unknown Sender'}</Text>
-                  <br />
-                  <Text type="secondary" style={{ fontSize: '12px' }}>
-                    {sender?.email}
-                  </Text>
-                </div>
-              </div>
-              <div>
-                <Text type="secondary">To: </Text>
-                <Text>{renderRecipientList(toList) || 'No recipients'}</Text>
-              </div>
-              {ccList.length > 0 && (
-                <div>
-                  <Text type="secondary">Cc: </Text>
-                  <Text>{renderRecipientList(ccList)}</Text>
-                </div>
-              )}
-              <div style={{ display: 'flex', gap: '4px' }}>
-                <Text type="secondary" style={{ fontSize: '12px' }}>Date: </Text>
-                <Text type="secondary" style={{ fontSize: '12px' }}>
-                  {displayDate ? new Date(displayDate).toLocaleString() : 'No date'}
-                </Text>
-              </div>
-            </Space>
+          <div style={{ marginBottom: '8px' }}>
+            <Title level={3} style={{ marginTop: '12px', marginBottom: '8px' }}>{email.subject}</Title>
           </div>
 
+          {/* V28.4: Metadata move up (Below Title, Above Buttons) */}
+          <div style={{ width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <Avatar 
+                  icon={<UserOutlined />} 
+                  style={{ backgroundColor: '#1a73e8' }}
+                  size={40}
+                />
+                <div>
+                  <div style={{ fontWeight: 600, color: '#202124', fontSize: '14px' }}>
+                    {email.from?.name || email.from?.email || email.sender}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#5f6368' }}>
+                     to {
+                        ((toList.length > 0 && toList.some((t: any) => t.email === email.accountEmail)) || 
+                         (toList.length === 0) ||
+                         (toList.length === 1 && toList[0].email === sender.email)) 
+                        ? 'me' 
+                        : renderRecipientList(toList)
+                     }
+                     {ccList.length > 0 && (
+                        <span style={{ marginLeft: '4px' }}>
+                          cc: {renderRecipientList(ccList)}
+                        </span>
+                     )}
+                  </div>
+                </div>
+              </div>
+              <div style={{ fontSize: '12px', color: '#5f6368' }}>
+                Sent: {displayDate ? new Date(displayDate).toLocaleString('en-US', {
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  hour12: false
+                }) : ''}
+              </div>
+            </div>
+          </div>
 
-          <Space wrap>
+          <Space wrap style={{ marginTop: '8px' }}>
             <Button type="primary" onClick={() => onReply && onReply(email)}>
               Reply
             </Button>
@@ -278,28 +290,70 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             </Card>
           )}
 
-          <Card size="small" bodyStyle={{ padding: 0 }} style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #eef2f6' }}>
-            {!email.body ? (
-                <div style={{ textAlign: 'center', padding: '40px' }}>
-                    <Spin size="large" tip="Loading content..." />
-                </div>
-            ) : (
-                <iframe
-                  srcDoc={`<base href="${process.env.NEXT_PUBLIC_API_URL}/">` + email.body}
-                  title="Email Content"
-                  style={{
-                    width: '100%',
-                    height: `${iframeHeight}px`,
-                    border: 'none',
-                    overflowY: 'hidden',
-                    overflowX: 'auto',
-                  }}
-                  scrolling="auto"
-                  sandbox="allow-scripts"
-                  referrerPolicy="no-referrer"
-                />
-            )}
-          </Card>
+          <div style={{ 
+            padding: '0 8px 16px', // Outer container breathing room
+            backgroundColor: '#f8fafc',
+            borderRadius: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            width: '100%'
+          }}>
+            <Card 
+              size="small" 
+              bodyStyle={{ padding: 0 }} 
+              style={{ 
+                borderRadius: '12px', 
+                overflow: 'hidden', 
+                border: '1px solid #eef2f6',
+                width: '100%',
+                maxWidth: '960px',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
+                backgroundColor: '#ffffff'
+              }}
+            >
+              {/* Card is now ONLY for body content */}
+              {!email.body ? (
+                  <div style={{ textAlign: 'center', padding: '60px 40px' }}>
+                      {/* V29: Resilience Fallback - if high-fidelity body is missing, show preview/snipppet */}
+                      {email.id && email.preview ? (
+                        <div style={{ textAlign: 'left', maxWidth: '800px', margin: '0 auto' }}>
+                           <div style={{ color: '#5f6368', marginBottom: '16px', fontSize: '14px', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px' }}>
+                             <RobotOutlined /> Note: High-fidelity content unavailable. Showing preview snippet.
+                           </div>
+                           <div style={{ whiteSpace: 'pre-wrap', color: '#202124', fontSize: '15px', lineHeight: '1.6' }}>
+                             {email.preview}
+                           </div>
+                        </div>
+                      ) : email.id ? (
+                        <div style={{ color: '#5f6368' }}>
+                          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No content available for this email" />
+                        </div>
+                      ) : (
+                        <Spin size="large" tip="Processing high-fidelity content..." />
+                      )}
+                  </div>
+              ) : (
+                  <div style={{ backgroundColor: '#ffffff' }}>
+                    <iframe
+                      srcDoc={`<base href="${process.env.NEXT_PUBLIC_API_URL}/">` + email.body}
+                      title="Email Content"
+                      style={{
+                        width: '100%',
+                        height: `${iframeHeight}px`,
+                        border: 'none',
+                        display: 'block',
+                        overflowY: 'hidden',
+                        overflowX: 'auto',
+                      }}
+                      scrolling="auto"
+                      sandbox="allow-scripts"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+              )}
+            </Card>
+          </div>
 
           {email.attachments && email.attachments.length > 0 && (
             <Card 

@@ -7,8 +7,7 @@ import {
   SettingOutlined, 
   CloudSyncOutlined,
   FilterOutlined,
-  SortAscendingOutlined,
-  ToolOutlined
+  SortAscendingOutlined
 } from '@ant-design/icons';
 
 export interface FilterState {
@@ -24,7 +23,6 @@ interface FilterBarProps {
   onFilterChange: (filters: FilterState) => void;
   onSortChange: (sortMode: SortMode) => void;
   onSync?: () => void;
-  onRepair?: () => void;
   onRefresh?: () => void;
   onSettings?: () => void;
   syncLoading?: boolean;
@@ -37,7 +35,6 @@ export default function FilterBar({
   onFilterChange,
   onSortChange,
   onSync,
-  onRepair,
   onRefresh,
   onSettings,
   syncLoading = false,
@@ -151,16 +148,6 @@ export default function FilterBar({
           </Tooltip>
         )}
 
-        {onRepair && (
-          <Tooltip title="Repair email content">
-            <Button 
-              type="text" 
-              icon={<ToolOutlined />} 
-              onClick={onRepair}
-              className="text-gray-400 hover:text-orange-600"
-            />
-          </Tooltip>
-        )}
 
         {onRefresh && (
           <Tooltip title="Refresh view">

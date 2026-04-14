@@ -81,22 +81,51 @@
   }
 }
 
-/* List Item Spacing */
+/* List Item Spacing - Refined */
 .mail-item-card {
-  margin-bottom: 8px !important;
+  margin-bottom: 12px !important;
   border: 1px solid #f1f5f9 !important;
-  border-radius: 10px !important;
+  border-radius: 12px !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  background: #ffffff;
 }
 
 .mail-item-card:hover {
-  border-color: #667eea !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
+  transform: translateY(-1px);
 }
 
-/* Email content card */
+/* Email selection state - Premium look */
 .email-card-selected {
-  border-left: 3px solid #667eea !important;
-  background-color: #f0f7ff !important;
+  border-left: 4px solid #4f46e5 !important;
+  background-color: #f8faff !important;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.08) !important;
+}
+
+/* Unread Indicator */
+.unread-dot {
+  width: 8px;
+  height: 8px;
+  background-color: #4f46e5;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 8px rgba(79, 70, 229, 0.4);
+}
+
+.mail-item-sender {
+  font-size: 14px;
+  color: #1a1a1b;
+}
+
+.mail-item-subject {
+  font-size: 13.5px;
+  color: #202124;
+}
+
+.mail-item-preview {
+  font-size: 12.5px;
+  color: #5f6368;
 }
 
 /* Scrollbar hide */

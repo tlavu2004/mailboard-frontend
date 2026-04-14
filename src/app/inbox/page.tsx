@@ -359,17 +359,6 @@ export default function InboxPage() {
     }
   };
 
-  const handleRepair = async () => {
-    try {
-      message.loading({ content: 'Repairing email bodies...', key: 'repairing' });
-      await emailService.repairEmails();
-      message.success({ content: 'Repair completed. Refreshing...', key: 'repairing' });
-      loadEmails(selectedMailbox);
-    } catch (error) {
-      console.error('Repair failed:', error);
-      message.error({ content: 'Repair failed', key: 'repairing' });
-    }
-  };
 
   useEffect(() => {
     const handleResize = () => {
@@ -895,7 +884,6 @@ export default function InboxPage() {
                 onFilterChange={setFilters}
                 onSortChange={setSortMode}
                 onSync={handleSync}
-                onRepair={handleRepair}
                 onRefresh={handleRefresh}
                 onSettings={viewMode === 'kanban' ? () => setKanbanSettingsOpen(true) : undefined}
                 syncLoading={syncLoading}
@@ -951,23 +939,58 @@ export default function InboxPage() {
                                     handleEmailSelect(email);
                                   }}
                                 >
-                                  <div className="flex justify-between items-start mb-1">
-                                    <Space size="small">
-                                      <Text strong={!email.isRead} style={{ fontSize: '14px' }}>{email.from.name}</Text>
-                                      {/* V10.35: Differentiated Icons in Inbox List */}
-                                      <div className="flex items-center gap-1">
-                                        {email.hasPhysicalAttachments && (
-                                          <PaperClipOutlined style={{ fontSize: '12px', color: '#8c8c8c' }} title="Physical files" />
-                                        )}
-                                        {email.hasCloudLinks && (
-                                          <CloudOutlined style={{ fontSize: '12px', color: '#1890ff' }} title="Cloud storage links" />
-                                        )}
+                                  <div className="flex items-start gap-3">
+                                    {/* Left: Avatar */}
+                                    <Avatar 
+                                      className="flex-shrink-0"
+                                      style={{ backgroundColor: email.isRead ? '#f1f5f9' : '#e0e7ff', color: email.isRead ? '#64748b' : '#4f46e5', fontWeight: 600 }}
+                                    >
+                                      {email.from.name ? email.from.name.charAt(0).toUpperCase() : '?'}
+                                    </Avatar>
+
+                                    {/* Middle: Content */}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex justify-between items-start mb-0.5">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                          {!email.isRead && <div className="unread-dot flex-shrink-0" />}
+                                          <Text strong={!email.isRead} className="mail-item-sender truncate">
+                                            {email.from.name}
+                                          </Text>
+                                          <div className="flex items-center gap-1 flex-shrink-0">
+                                            {email.hasPhysicalAttachments && (
+                                              <PaperClipOutlined style={{ fontSize: '11px', color: '#94a3b8' }} />
+                                            )}
+                                            {email.hasCloudLinks && (
+                                              <CloudOutlined style={{ fontSize: '11px', color: '#3b82f6' }} />
+                                            )}
+                                          </div>
+                                        </div>
+                                        
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                          <div 
+                                            onClick={(e) => handleStar(e, email)}
+                                            className="cursor-pointer hover:scale-125 transition-transform duration-200"
+                                          >
+                                            {email.isStarred ? (
+                                              <StarFilled style={{ color: '#f59e0b', fontSize: '15px' }} />
+                                            ) : (
+                                              <StarOutlined style={{ color: '#cbd5e1', fontSize: '15px' }} />
+                                            )}
+                                          </div>
+                                          <Text type="secondary" style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>
+                                            {formatDate(email.receivedAt)}
+                                          </Text>
+                                        </div>
                                       </div>
-                                    </Space>
-                                    <Text type="secondary" style={{ fontSize: '11px' }}>{formatDate(email.receivedAt)}</Text>
+
+                                      <Text strong={!email.isRead} className="mail-item-subject block truncate">
+                                        {email.subject}
+                                      </Text>
+                                      <Text className="mail-item-preview block truncate" style={{ marginTop: '2px' }}>
+                                        {email.preview}
+                                      </Text>
+                                    </div>
                                   </div>
-                                  <Text strong={!email.isRead} className="block text-sm truncate">{email.subject}</Text>
-                                  <Text type="secondary" className="block text-xs truncate leading-relaxed" style={{ marginTop: '4px' }}>{email.preview}</Text>
                                 </Card>
                               )}
                             />

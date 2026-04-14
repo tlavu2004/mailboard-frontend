@@ -33,6 +33,7 @@ export interface Email {
   accountEmail?: string;
   mailboxId: string;
   from: EmailAddress;
+  sender?: string;
   to: EmailAddress[];
   cc?: EmailAddress[];
   bcc?: EmailAddress[];
