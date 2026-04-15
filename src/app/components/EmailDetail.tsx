@@ -347,7 +347,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                         overflowX: 'auto',
                       }}
                       scrolling="auto"
-                      sandbox="allow-scripts"
+                      sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
                       referrerPolicy="no-referrer"
                     />
                   </div>
