@@ -73,8 +73,25 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
       url = `https://mail.google.com/mail/u/0/#search/rfc822msgid:${encodeURIComponent(msgId)}`;
     }
 
-    if (email.accountEmail && url.includes('/u/0/')) {
-      return url.replace('/u/0/', `/u/${encodeURIComponent(email.accountEmail)}/`);
+    // Normalize any /u/<something>/ segment to /u/0/ and ensure authuser query param
+    try {
+      // Replace any /u/<whatever>/ with /u/0/ to avoid using an email in the path which can cause Gmail 404
+      url = url.replace(/\/u\/[^\/]+\//, '/u/0/');
+
+      // If authuser already present, return as-is
+      if (!url.includes('authuser=')) {
+        const parts = url.split('#');
+        const base = parts[0];
+        const frag = parts[1] ? '#' + parts[1] : '';
+        const sep = base.includes('?') ? '&' : '?';
+        if (email.accountEmail) {
+          url = `${base}${sep}authuser=${encodeURIComponent(email.accountEmail)}${frag}`;
+        } else {
+          url = `${base}${frag}`;
+        }
+      }
+    } catch (e) {
+      console.warn('[EmailDetail] Failed to normalize gmail url', e);
     }
 
     return url;
