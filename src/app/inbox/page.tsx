@@ -74,7 +74,9 @@ export default function InboxPage() {
   const [autoAddColumn, setAutoAddColumn] = useState(false);
   const [triggerAddColumn, setTriggerAddColumn] = useState(false);
   const [listWidth, setListWidth] = useState(400);
+  const [sidebarWidth, setSidebarWidth] = useState(260);
   const [isResizing, setIsResizing] = useState(false);
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
   // Pagination state
@@ -369,35 +371,42 @@ export default function InboxPage() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Resizing logic
+  // Unified Resizing Logic (Sidebar & List)
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing) return;
-
-      // Calculate new width: mouse postion minus sidebar width (variable)
-      // Sidebar width is 260px on desktop
-      const newWidth = e.clientX - 260;
-      if (newWidth > 250 && newWidth < 800) {
-        setListWidth(newWidth);
+      if (isResizingSidebar) {
+        const newWidth = e.clientX;
+        if (newWidth > 180 && newWidth < 450) {
+          setSidebarWidth(newWidth);
+        }
+      } else if (isResizing) {
+        // Calculate relative to sidebarWidth to avoid jitter and hardcoding
+        const newWidth = e.clientX - sidebarWidth;
+        if (newWidth > 250 && newWidth < 800) {
+          setListWidth(newWidth);
+        }
       }
     };
 
     const stopResizing = () => {
       setIsResizing(false);
+      setIsResizingSidebar(false);
       document.body.style.cursor = 'default';
+      document.body.classList.remove('resizing');
     };
 
-    if (isResizing) {
+    if (isResizing || isResizingSidebar) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', stopResizing);
       document.body.style.cursor = 'col-resize';
+      document.body.classList.add('resizing');
     }
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', stopResizing);
     };
-  }, [isResizing]);
+  }, [isResizing, isResizingSidebar, sidebarWidth]);
 
   // Handlers
   // real-time notifications
@@ -802,12 +811,16 @@ export default function InboxPage() {
         <Layout className="main-layout" style={{ flex: 1, overflow: 'hidden' }}>
           {/* GLOBAL LEFT SIDEBAR - Unified for all views */}
           <Sider
-            width={260}
+            width={sidebarWidth}
             theme="light"
             breakpoint="lg"
             collapsedWidth="0"
             className="mailbox-sider hidden-mobile"
             trigger={null}
+            style={{ 
+              transition: isResizingSidebar ? 'none' : 'width 0.2s ease',
+              flex: '0 0 auto'
+            }}
           >
             <div className="sidebar-container">
               {/* Branding removed: now in top header */}
@@ -876,6 +889,15 @@ export default function InboxPage() {
             </div>
           </Sider>
 
+          {/* Sidebar Resize Handle */}
+          <div
+            className={`resize-handle hidden-mobile ${isResizingSidebar ? 'active' : ''}`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setIsResizingSidebar(true);
+            }}
+          />
+
           <Layout style={{ flex: 1, overflow: 'hidden', background: '#f8fafc' }}>
             <div className="px-6 py-4">
               <FilterBar
@@ -911,13 +933,13 @@ export default function InboxPage() {
               ) : (
                 <div className="flex h-full w-full overflow-hidden relative">
                   {/* Left Column: List or Kanban */}
-                  <div
-                    className={`flex flex-col bg-white border-r border-gray-100 ${showMobileDetail ? (viewMode === 'list' ? 'hidden-mobile' : 'hidden') : 'flex w-full'}`}
-                    style={{
-                      width: viewMode === 'list' ? (selectedEmail ? `${listWidth}px` : '100%') : '100%',
-                      transition: isResizing ? 'none' : 'width 0.3s ease'
-                    }}
-                  >
+                    <div
+                      className={`flex flex-col bg-white border-r border-gray-100 ${showMobileDetail ? (viewMode === 'list' ? 'hidden-mobile' : 'hidden') : 'flex w-full'}`}
+                      style={{
+                        width: viewMode === 'list' ? (selectedEmail ? `${listWidth}px` : '100%') : '100%',
+                        transition: isResizing ? 'none' : 'width 0.3s ease'
+                      }}
+                    >
                     {viewMode === 'list' ? (
                       <>
                         <div className="p-4 border-b border-gray-100">
