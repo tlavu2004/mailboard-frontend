@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Typography, Space, Avatar, Card, Empty, Spin, Popover } from 'antd';
+import { Button, Typography, Space, Avatar, Card, Empty, Spin, Popover, Tag, Tooltip } from 'antd';
 import {
   ArrowLeftOutlined,
   StarOutlined,
@@ -67,7 +67,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
     // If we have a direct gmailLink from backend, use it
     // But replace /u/0/ with /u/accountEmail/ if available to handle multi-account login
     let url = email.gmailLink;
-    
+
     if (!url) {
       const msgId: string = email.messageId || email.id || '';
       url = `https://mail.google.com/mail/u/0/#search/rfc822msgid:${encodeURIComponent(msgId)}`;
@@ -76,7 +76,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
     if (email.accountEmail && url.includes('/u/0/')) {
       return url.replace('/u/0/', `/u/${encodeURIComponent(email.accountEmail)}/`);
     }
-    
+
     return url;
   };
 
@@ -87,7 +87,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
   };
 
   const [iframeHeight, setIframeHeight] = React.useState<number>(400);
-  
+
   React.useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data && event.data.type === 'MB_RESIZE' && typeof event.data.height === 'number') {
@@ -179,8 +179,8 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
           <div style={{ width: '100%' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <Avatar 
-                  icon={<UserOutlined />} 
+                <Avatar
+                  icon={<UserOutlined />}
                   style={{ backgroundColor: '#1a73e8' }}
                   size={40}
                 />
@@ -189,18 +189,38 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                     {email.from?.name || email.from?.email || email.sender}
                   </div>
                   <div style={{ fontSize: '12px', color: '#5f6368' }}>
-                     to {
-                        ((toList.length > 0 && toList.some((t: any) => t.email === email.accountEmail)) || 
-                         (toList.length === 0) ||
-                         (toList.length === 1 && toList[0].email === sender.email)) 
-                        ? 'me' 
-                        : renderRecipientList(toList)
-                     }
-                     {ccList.length > 0 && (
-                        <span style={{ marginLeft: '4px' }}>
-                          cc: {renderRecipientList(ccList)}
-                        </span>
-                     )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ fontWeight: 600, color: '#5f6368', fontSize: '12px' }}>To:</div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {toList && toList.length > 0 ? (
+                          toList.map((r: any, idx: number) => (
+                            <Tag key={r.email || r.name || idx} style={{ margin: 0 }}>
+                              {typeof r === 'string' ? r : (r.name || r.email)}
+                            </Tag>
+                          ))
+                        ) : (
+                          <span>me</span>
+                        )}
+                      </div>
+
+                      {ccList && ccList.length > 0 && (
+                        <Popover
+                          content={
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: 420 }}>
+                              {ccList.map((r: any, idx: number) => (
+                                <Tag key={r.email || r.name || idx} style={{ margin: 0 }}>
+                                  {typeof r === 'string' ? r : (r.name || r.email)}
+                                </Tag>
+                              ))}
+                            </div>
+                          }
+                          title={`Cc (${ccList.length})`}
+                          trigger="click"
+                        >
+                          <Tag color="default" style={{ cursor: 'pointer', marginLeft: 8 }}>Cc: {ccList.length}</Tag>
+                        </Popover>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -227,17 +247,17 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             <Button onClick={() => onForward && onForward(email)}>
               Forward
             </Button>
-            <Button 
-              icon={email.isStarred ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined />} 
+            <Button
+              icon={email.isStarred ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined />}
               onClick={(e) => onStar(e, email)}
             >
               {email.isStarred ? 'Unstar' : 'Star'}
             </Button>
-            
+
             <Popover
               content={
-                <SnoozePopover 
-                  onConfirm={(until) => onSnooze && onSnooze(email.id, until)} 
+                <SnoozePopover
+                  onConfirm={(until) => onSnooze && onSnooze(email.id, until)}
                 />
               }
               trigger="click"
@@ -251,15 +271,15 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             <Button icon={<DeleteOutlined />} danger onClick={(e) => onDelete(e, email)}>
               Delete
             </Button>
-            <Button 
-              icon={<ExportOutlined />} 
+            <Button
+              icon={<ExportOutlined />}
               onClick={handleOpenInGmail}
               title="Open in Gmail"
             >
               Open in Gmail
             </Button>
-            <Button 
-              icon={<RobotOutlined />} 
+            <Button
+              icon={<RobotOutlined />}
               onClick={() => onSummarize && onSummarize(email)}
               loading={loadingSummary}
               disabled={email.summarySource === 'GEMINI'}
@@ -270,10 +290,10 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
           </Space>
 
           {(email.summary || loadingSummary) && (
-            <Card 
-              size="small" 
+            <Card
+              size="small"
               title={<Space><RobotOutlined /> <Text strong>AI Summary</Text></Space>}
-              style={{ 
+              style={{
                 borderLeft: email.summarySource === 'GEMINI' ? '4px solid #48bb78' : '4px solid #667eea',
                 background: '#fcfdff'
               }}
@@ -290,7 +310,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             </Card>
           )}
 
-          <div style={{ 
+          <div style={{
             padding: '0 8px 16px', // Outer container breathing room
             backgroundColor: '#f8fafc',
             borderRadius: '16px',
@@ -299,12 +319,12 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             alignItems: 'center',
             width: '100%'
           }}>
-            <Card 
-              size="small" 
-              bodyStyle={{ padding: 0 }} 
-              style={{ 
-                borderRadius: '12px', 
-                overflow: 'hidden', 
+            <Card
+              size="small"
+              bodyStyle={{ padding: 0 }}
+              style={{
+                borderRadius: '12px',
+                overflow: 'hidden',
                 border: '1px solid #eef2f6',
                 width: '100%',
                 maxWidth: '960px',
@@ -314,54 +334,54 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             >
               {/* Card is now ONLY for body content */}
               {!email.body ? (
-                  <div style={{ textAlign: 'center', padding: '60px 40px' }}>
-                      {/* V29: Resilience Fallback - if high-fidelity body is missing, show preview/snipppet */}
-                      {email.id && email.preview ? (
-                        <div style={{ textAlign: 'left', maxWidth: '800px', margin: '0 auto' }}>
-                           <div style={{ color: '#5f6368', marginBottom: '16px', fontSize: '14px', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px' }}>
-                             <RobotOutlined /> Note: High-fidelity content unavailable. Showing preview snippet.
-                           </div>
-                           <div style={{ whiteSpace: 'pre-wrap', color: '#202124', fontSize: '15px', lineHeight: '1.6' }}>
-                             {email.preview}
-                           </div>
-                        </div>
-                      ) : email.id ? (
-                        <div style={{ color: '#5f6368' }}>
-                          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No content available for this email" />
-                        </div>
-                      ) : (
-                        <Spin size="large" tip="Processing high-fidelity content..." />
-                      )}
-                  </div>
+                <div style={{ textAlign: 'center', padding: '60px 40px' }}>
+                  {/* V29: Resilience Fallback - if high-fidelity body is missing, show preview/snipppet */}
+                  {email.id && email.preview ? (
+                    <div style={{ textAlign: 'left', maxWidth: '800px', margin: '0 auto' }}>
+                      <div style={{ color: '#5f6368', marginBottom: '16px', fontSize: '14px', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px' }}>
+                        <RobotOutlined /> Note: High-fidelity content unavailable. Showing preview snippet.
+                      </div>
+                      <div style={{ whiteSpace: 'pre-wrap', color: '#202124', fontSize: '15px', lineHeight: '1.6' }}>
+                        {email.preview}
+                      </div>
+                    </div>
+                  ) : email.id ? (
+                    <div style={{ color: '#5f6368' }}>
+                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No content available for this email" />
+                    </div>
+                  ) : (
+                    <Spin size="large" tip="Processing high-fidelity content..." />
+                  )}
+                </div>
               ) : (
-                  <div style={{ backgroundColor: '#ffffff' }}>
-                    <iframe
-                      srcDoc={`<base href="${process.env.NEXT_PUBLIC_API_URL}/">` + email.body}
-                      title="Email Content"
-                      style={{
-                        width: '100%',
-                        height: `${iframeHeight}px`,
-                        border: 'none',
-                        display: 'block',
-                        overflowY: 'hidden',
-                        overflowX: 'auto',
-                      }}
-                      scrolling="auto"
-                      sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
+                <div style={{ backgroundColor: '#ffffff' }}>
+                  <iframe
+                    srcDoc={`<base href="${process.env.NEXT_PUBLIC_API_URL}/">` + email.body}
+                    title="Email Content"
+                    style={{
+                      width: '100%',
+                      height: `${iframeHeight}px`,
+                      border: 'none',
+                      display: 'block',
+                      overflowY: 'hidden',
+                      overflowX: 'auto',
+                    }}
+                    scrolling="auto"
+                    sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
               )}
             </Card>
           </div>
 
           {email.attachments && email.attachments.length > 0 && (
-            <Card 
-              size="small" 
+            <Card
+              size="small"
               title={<Space><PaperClipOutlined /> <Text strong>Attachments ({email.attachments.length})</Text></Space>}
               className="attachments-card"
-              style={{ 
-                borderRadius: '12px', 
+              style={{
+                borderRadius: '12px',
                 border: '1px solid #eef2f6',
                 background: '#f8fafc'
               }}
@@ -383,11 +403,11 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '12px' }}>
-                      <div style={{ 
-                        padding: '8px', 
-                        background: attachment.externalUrl ? '#e6f7ff' : '#f1f5f9', 
-                        borderRadius: '8px', 
-                        color: attachment.externalUrl ? '#1890ff' : '#667eea' 
+                      <div style={{
+                        padding: '8px',
+                        background: attachment.externalUrl ? '#e6f7ff' : '#f1f5f9',
+                        borderRadius: '8px',
+                        color: attachment.externalUrl ? '#1890ff' : '#667eea'
                       }}>
                         {attachment.externalUrl ? <CloudDownloadOutlined /> : <FileOutlined />}
                       </div>

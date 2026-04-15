@@ -229,6 +229,28 @@ export default function InboxPage() {
       setTotalEmails(data.total || 0);
       setCurrentPage(page);
       setSelectedEmail(null);
+
+      // Background enrichment: for items that claim attachments but lack metadata,
+      // fetch full detail for a small number to populate attachments quickly.
+      (async () => {
+        try {
+          const toEnrich = (emailList || []).filter(e => e.hasAttachments && (!e.attachments || e.attachments.length === 0)).slice(0, 6);
+          if (toEnrich.length > 0) {
+            console.log('[InboxPage] Enriching attachments for', toEnrich.length, 'emails');
+            for (const partial of toEnrich) {
+              try {
+                const full = await emailService.getEmailDetail(partial.id);
+                setEmails(prev => prev.map(p => p.id === full.id ? { ...p, ...full } : p));
+                setSelectedEmail(prev => prev && prev.id === full.id ? full : prev);
+              } catch (err) {
+                console.warn('[InboxPage] Enrich failed for', partial.id, err);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[InboxPage] Attachment enrichment error', e);
+        }
+      })();
     } catch (error) {
       console.error('[InboxPage] loadEmails: FAILED', error);
       message.error('Failed to load emails');
@@ -320,10 +342,11 @@ export default function InboxPage() {
 
     // If body is missing OR if we expect attachments but don't have them yet, fetch full details
     const needsDetail = !email.body || (email.hasAttachments && (!email.attachments || email.attachments.length === 0));
-    
+
     if (needsDetail) {
       try {
         const fullEmail = await emailService.getEmailDetail(email.id);
+        console.log('[InboxPage] Fetched full email detail for', fullEmail.id, 'attachmentsCount=', fullEmail.attachments?.length);
         setSelectedEmail(prev => (prev ? { ...prev, ...fullEmail } : fullEmail));
       } catch (error) {
         console.error('Failed to load full email body', error);
@@ -410,16 +433,50 @@ export default function InboxPage() {
 
   // Handlers
   // real-time notifications
-  const handleNotification = useCallback((msg: { type: string; message: string }) => {
-    if (msg.type === 'NEW_EMAILS') {
-      message.info('New emails received! Syncing...');
-
-      // Add a small delay (500ms) to ensure DB transaction is fully committed
-      // before we fetch the data in our current thread
-      setTimeout(() => {
-        loadMailboxes();
-        loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
-      }, 500);
+  const handleNotification = useCallback((msg: any) => {
+    console.log('[InboxPage] WebSocket notification received:', msg);
+    if (msg?.type === 'NEW_EMAILS') {
+      // If backend provided specific email IDs, fetch them and insert into UI immediately
+      if (Array.isArray(msg.emailIds) && msg.emailIds.length > 0) {
+        message.info('New emails received! Updating view...');
+        (async () => {
+          try {
+            for (const id of msg.emailIds) {
+              try {
+                const full = await emailService.getEmailDetail(String(id));
+                setEmails(prev => {
+                  // Avoid duplicates
+                  const exists = prev.some(e => e.id === full.id);
+                  if (exists) {
+                    // Replace existing entry with fresh data
+                    return prev.map(e => e.id === full.id ? full : e);
+                  }
+                  // Prepend newest message
+                  const next = [full, ...prev];
+                  // Keep list size bounded to pageSize
+                  return next.slice(0, pageSize);
+                });
+              } catch (err) {
+                console.warn('[InboxPage] Failed to fetch new email detail for id', id, err);
+              }
+            }
+          } catch (e) {
+            console.warn('[InboxPage] Error processing NEW_EMAILS payload', e);
+            // Fallback to full refresh
+            setTimeout(() => {
+              loadMailboxes();
+              loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
+            }, 500);
+          }
+        })();
+      } else {
+        // Generic fallback: refresh mailbox list and current mailbox view
+        message.info('New emails received! Syncing...');
+        setTimeout(() => {
+          loadMailboxes();
+          loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
+        }, 500);
+      }
     }
   }, [selectedMailbox, loadMailboxes, loadEmails, pageSize, filters]);
 
@@ -817,7 +874,7 @@ export default function InboxPage() {
             collapsedWidth="0"
             className="mailbox-sider hidden-mobile"
             trigger={null}
-            style={{ 
+            style={{
               transition: isResizingSidebar ? 'none' : 'width 0.2s ease',
               flex: '0 0 auto'
             }}
@@ -933,13 +990,13 @@ export default function InboxPage() {
               ) : (
                 <div className="flex h-full w-full overflow-hidden relative">
                   {/* Left Column: List or Kanban */}
-                    <div
-                      className={`flex flex-col bg-white border-r border-gray-100 ${showMobileDetail ? (viewMode === 'list' ? 'hidden-mobile' : 'hidden') : 'flex w-full'}`}
-                      style={{
-                        width: viewMode === 'list' ? (selectedEmail ? `${listWidth}px` : '100%') : '100%',
-                        transition: isResizing ? 'none' : 'width 0.3s ease'
-                      }}
-                    >
+                  <div
+                    className={`flex flex-col bg-white border-r border-gray-100 ${showMobileDetail ? (viewMode === 'list' ? 'hidden-mobile' : 'hidden') : 'flex w-full'}`}
+                    style={{
+                      width: viewMode === 'list' ? (selectedEmail ? `${listWidth}px` : '100%') : '100%',
+                      transition: isResizing ? 'none' : 'width 0.3s ease'
+                    }}
+                  >
                     {viewMode === 'list' ? (
                       <>
                         <div className="p-4 border-b border-gray-100">
@@ -963,7 +1020,7 @@ export default function InboxPage() {
                                 >
                                   <div className="flex items-start gap-3">
                                     {/* Left: Avatar */}
-                                    <Avatar 
+                                    <Avatar
                                       className="flex-shrink-0"
                                       style={{ backgroundColor: email.isRead ? '#f1f5f9' : '#e0e7ff', color: email.isRead ? '#64748b' : '#4f46e5', fontWeight: 600 }}
                                     >
@@ -987,9 +1044,9 @@ export default function InboxPage() {
                                             )}
                                           </div>
                                         </div>
-                                        
+
                                         <div className="flex items-center gap-2 flex-shrink-0">
-                                          <div 
+                                          <div
                                             onClick={(e) => handleStar(e, email)}
                                             className="cursor-pointer hover:scale-125 transition-transform duration-200"
                                           >
@@ -1160,13 +1217,13 @@ export default function InboxPage() {
           footer={null}
           width={1000}
           centered
-          styles={{ 
-            body: { 
-              padding: '0 24px 24px 24px', 
-              maxHeight: '85vh', 
+          styles={{
+            body: {
+              padding: '0 24px 24px 24px',
+              maxHeight: '85vh',
               overflowY: 'auto',
               borderRadius: '12px'
-            } 
+            }
           }}
           className="email-detail-modal"
           destroyOnClose
