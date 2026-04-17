@@ -2,9 +2,9 @@
 
 import React from 'react';
 import { Button, Space, Select, Divider, Tooltip } from 'antd';
-import { 
-  ReloadOutlined, 
-  SettingOutlined, 
+import {
+  ReloadOutlined,
+  SettingOutlined,
   CloudSyncOutlined,
   FilterOutlined,
   SortAscendingOutlined
@@ -40,7 +40,7 @@ export default function FilterBar({
   syncLoading = false,
   refreshLoading = false,
 }: FilterBarProps) {
-  
+
   const toggleUnread = () => {
     onFilterChange({ ...filters, unread: !filters.unread });
   };
@@ -50,7 +50,7 @@ export default function FilterBar({
   };
 
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-4 bg-white p-2 px-4 rounded-xl border border-gray-100 shadow-sm w-full">
+    <div className="mb-2 flex flex-wrap items-center gap-4 bg-white p-2 px-4 rounded-xl border border-gray-100 shadow-sm w-full">
       {/* Filter Section */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2 text-gray-500 font-medium">
@@ -60,15 +60,13 @@ export default function FilterBar({
 
         <button
           onClick={toggleUnread}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all cursor-pointer ${
-            filters.unread 
-              ? 'border-blue-200 bg-blue-50 text-blue-700 font-medium' 
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all cursor-pointer ${filters.unread
+              ? 'border-blue-200 bg-blue-50 text-blue-700 font-medium'
               : 'border-gray-200 text-gray-600 hover:border-gray-300 bg-white'
-          }`}
+            }`}
         >
-          <div className={`w-4 h-4 rounded border flex items-center justify-center ${
-            filters.unread ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'
-          }`}>
+          <div className={`w-4 h-4 rounded border flex items-center justify-center ${filters.unread ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'
+            }`}>
             {filters.unread && (
               <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
@@ -80,15 +78,13 @@ export default function FilterBar({
 
         <button
           onClick={toggleHasAttachment}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all cursor-pointer ${
-            filters.hasAttachment 
-              ? 'border-blue-200 bg-blue-50 text-blue-700 font-medium' 
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all cursor-pointer ${filters.hasAttachment
+              ? 'border-blue-200 bg-blue-50 text-blue-700 font-medium'
               : 'border-gray-200 text-gray-600 hover:border-gray-300 bg-white'
-          }`}
+            }`}
         >
-          <div className={`w-4 h-4 rounded border flex items-center justify-center ${
-            filters.hasAttachment ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'
-          }`}>
+          <div className={`w-4 h-4 rounded border flex items-center justify-center ${filters.hasAttachment ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'
+            }`}>
             {filters.hasAttachment && (
               <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
@@ -127,20 +123,20 @@ export default function FilterBar({
       <div className="ml-auto flex items-center gap-1 sm:gap-2">
         {onSettings && (
           <Tooltip title="Settings">
-            <Button 
-              type="text" 
-              icon={<SettingOutlined />} 
+            <Button
+              type="text"
+              icon={<SettingOutlined />}
               onClick={onSettings}
               className="text-gray-400 hover:text-blue-600"
             />
           </Tooltip>
         )}
-        
+
         {onSync && (
           <Tooltip title="Sync with Gmail">
-            <Button 
-              type="text" 
-              icon={<CloudSyncOutlined spin={syncLoading} />} 
+            <Button
+              type="text"
+              icon={<CloudSyncOutlined spin={syncLoading} />}
               onClick={onSync}
               loading={syncLoading}
               className="text-gray-400 hover:text-blue-600"
@@ -151,9 +147,9 @@ export default function FilterBar({
 
         {onRefresh && (
           <Tooltip title="Refresh view">
-            <Button 
-              type="text" 
-              icon={<ReloadOutlined spin={refreshLoading} />} 
+            <Button
+              type="text"
+              icon={<ReloadOutlined spin={refreshLoading} />}
               onClick={onRefresh}
               className="text-gray-400 hover:text-blue-600"
             />

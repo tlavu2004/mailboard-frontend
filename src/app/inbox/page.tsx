@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Layout, Menu, List, Card, Button, Badge, Typography, Space, Avatar, Spin, message, Empty, Modal, Pagination, Dropdown, Drawer } from 'antd';
+import { Layout, Menu, List, Card, Button, Badge, Typography, Space, Avatar, Spin, message, Empty, Modal, Pagination, InputNumber, Dropdown, Drawer } from 'antd';
 import EmailDetail from '@/app/components/EmailDetail';
 import ComposeModal from '@/components/ComposeModal';
 import {
@@ -83,6 +83,7 @@ export default function InboxPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalEmails, setTotalEmails] = useState(0);
   const [pageSize, setPageSize] = useState(20);
+  const totalPages = pageSize > 0 ? Math.max(1, Math.ceil(totalEmails / pageSize)) : 1;
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -454,6 +455,8 @@ export default function InboxPage() {
                   // Prepend newest message
                   const next = [full, ...prev];
                   // Keep list size bounded to pageSize
+                  // Update total count when a truly new email arrives
+                  setTotalEmails(t => t + (exists ? 0 : 1));
                   return next.slice(0, pageSize);
                 });
               } catch (err) {
@@ -962,7 +965,7 @@ export default function InboxPage() {
           />
 
           <Layout style={{ flex: 1, overflow: 'hidden', background: '#f8fafc' }}>
-            <div className="px-6 py-4">
+            <div className="px-6 py-2">
               <FilterBar
                 filters={filters}
                 sortMode={sortMode}
@@ -1005,80 +1008,117 @@ export default function InboxPage() {
                   >
                     {viewMode === 'list' ? (
                       <>
-                        <div className="p-4 border-b border-gray-100">
+                        <div className="p-2 border-b border-gray-100" style={{ paddingLeft: '24px' }}>
                           <Title level={5} style={{ margin: 0 }}>
                             {mailboxes.find(m => m.id === selectedMailbox)?.name || 'Inbox'}
                           </Title>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-3">
+                        <div className="flex-1 overflow-y-auto p-2" style={{ paddingLeft: '24px', paddingRight: '12px' }}>
                           {emailsLoading ? <div className="p-12 text-center"><Spin /></div> : (
-                            <List
-                              dataSource={emails}
-                              renderItem={(email, index) => (
-                                <Card
-                                  hoverable
-                                  className={`mail-item-card cursor-pointer transition-all ${selectedEmail?.id === email.id ? 'email-card-selected' : ''}`}
-                                  styles={{ body: { padding: '12px' } }}
-                                  onClick={() => {
-                                    setActiveIndex(index);
-                                    handleEmailSelect(email);
-                                  }}
-                                >
-                                  <div className="flex items-start gap-3">
-                                    {/* Left: Avatar */}
-                                    <Avatar
-                                      className="flex-shrink-0"
-                                      style={{ backgroundColor: email.isRead ? '#f1f5f9' : '#e0e7ff', color: email.isRead ? '#64748b' : '#4f46e5', fontWeight: 600 }}
-                                    >
-                                      {email.from.name ? email.from.name.charAt(0).toUpperCase() : '?'}
-                                    </Avatar>
+                            <>
+                              {/* Pagination for list view (sticky on top, under header) */}
+                              <div style={{ position: 'sticky', top: 0, background: '#fcfdff', padding: '6px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e6edf3', zIndex: 20 }}>
+                                <div style={{ fontSize: '12px', color: '#6b7280', minWidth: 160 }}>
+                                  {totalEmails > 0 ? `${Math.min(((currentPage - 1) * pageSize) + 1, totalEmails)}-${Math.min(currentPage * pageSize, totalEmails)} of ${totalEmails} emails` : 'No emails'}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                  <Pagination
+                                    simple
+                                    current={currentPage}
+                                    total={totalEmails}
+                                    pageSize={pageSize}
+                                    onChange={handlePageChange}
+                                    showSizeChanger
+                                    pageSizeOptions={["10", "20", "50", "100"]}
+                                  />
+                                </div>
+                              </div>
 
-                                    {/* Middle: Content */}
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex justify-between items-start mb-0.5">
-                                        <div className="flex items-center gap-2 min-w-0">
-                                          {!email.isRead && <div className="unread-dot flex-shrink-0" />}
-                                          <Text strong={!email.isRead} className="mail-item-sender truncate">
-                                            {email.from.name}
-                                          </Text>
-                                          <div className="flex items-center gap-1 flex-shrink-0">
-                                            {email.hasPhysicalAttachments && (
-                                              <PaperClipOutlined style={{ fontSize: '11px', color: '#94a3b8' }} />
-                                            )}
-                                            {email.hasCloudLinks && (
-                                              <CloudOutlined style={{ fontSize: '11px', color: '#3b82f6' }} />
-                                            )}
+                              <List
+                                dataSource={emails}
+                                renderItem={(email, index) => (
+                                  <Card
+                                    hoverable
+                                    className={`mail-item-card cursor-pointer transition-all ${selectedEmail?.id === email.id ? 'email-card-selected' : ''}`}
+                                    styles={{ body: { padding: '12px' } }}
+                                    onClick={() => {
+                                      setActiveIndex(index);
+                                      handleEmailSelect(email);
+                                    }}
+                                  >
+                                    <div className="flex items-start gap-3">
+                                      {/* Left: Avatar */}
+                                      <Avatar
+                                        className="flex-shrink-0"
+                                        style={{ backgroundColor: email.isRead ? '#f1f5f9' : '#e0e7ff', color: email.isRead ? '#64748b' : '#4f46e5', fontWeight: 600 }}
+                                      >
+                                        {email.from.name ? email.from.name.charAt(0).toUpperCase() : '?'}
+                                      </Avatar>
+
+                                      {/* Middle: Content */}
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex justify-between items-start mb-0.5">
+                                          <div className="flex items-center gap-2 min-w-0">
+                                            {!email.isRead && <div className="unread-dot flex-shrink-0" />}
+                                            <Text strong={!email.isRead} className="mail-item-sender truncate">
+                                              {email.from.name}
+                                            </Text>
+                                            <div className="flex items-center gap-1 flex-shrink-0">
+                                              {email.hasPhysicalAttachments && (
+                                                <PaperClipOutlined style={{ fontSize: '11px', color: '#94a3b8' }} />
+                                              )}
+                                              {email.hasCloudLinks && (
+                                                <CloudOutlined style={{ fontSize: '11px', color: '#3b82f6' }} />
+                                              )}
+                                            </div>
+                                          </div>
+
+                                          <div className="flex items-center gap-2 flex-shrink-0">
+                                            <div
+                                              onClick={(e) => handleStar(e, email)}
+                                              className="cursor-pointer hover:scale-125 transition-transform duration-200"
+                                            >
+                                              {email.isStarred ? (
+                                                <StarFilled style={{ color: '#f59e0b', fontSize: '15px' }} />
+                                              ) : (
+                                                <StarOutlined style={{ color: '#cbd5e1', fontSize: '15px' }} />
+                                              )}
+                                            </div>
+                                            <Text type="secondary" style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>
+                                              {formatDate(email.receivedAt)}
+                                            </Text>
                                           </div>
                                         </div>
 
-                                        <div className="flex items-center gap-2 flex-shrink-0">
-                                          <div
-                                            onClick={(e) => handleStar(e, email)}
-                                            className="cursor-pointer hover:scale-125 transition-transform duration-200"
-                                          >
-                                            {email.isStarred ? (
-                                              <StarFilled style={{ color: '#f59e0b', fontSize: '15px' }} />
-                                            ) : (
-                                              <StarOutlined style={{ color: '#cbd5e1', fontSize: '15px' }} />
-                                            )}
-                                          </div>
-                                          <Text type="secondary" style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>
-                                            {formatDate(email.receivedAt)}
-                                          </Text>
-                                        </div>
+                                        <Text strong={!email.isRead} className="mail-item-subject block truncate">
+                                          {email.subject}
+                                        </Text>
+                                        <Text className="mail-item-preview block truncate" style={{ marginTop: '2px' }}>
+                                          {email.preview}
+                                        </Text>
                                       </div>
-
-                                      <Text strong={!email.isRead} className="mail-item-subject block truncate">
-                                        {email.subject}
-                                      </Text>
-                                      <Text className="mail-item-preview block truncate" style={{ marginTop: '2px' }}>
-                                        {email.preview}
-                                      </Text>
                                     </div>
-                                  </div>
-                                </Card>
-                              )}
-                            />
+                                  </Card>
+                                )}
+                              />
+                              {/* Pagination for list view (sticky, simple pagination with centered page input) */}
+                              <div style={{ position: 'sticky', bottom: 0, background: '#fcfdff', padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #e6edf3', zIndex: 20 }}>
+                                <div style={{ fontSize: '13px', color: '#6b7280', minWidth: 200 }}>
+                                  {totalEmails > 0 ? `${Math.min(((currentPage - 1) * pageSize) + 1, totalEmails)}-${Math.min(currentPage * pageSize, totalEmails)} of ${totalEmails} emails` : 'No emails'}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                  <Pagination
+                                    simple
+                                    current={currentPage}
+                                    total={totalEmails}
+                                    pageSize={pageSize}
+                                    onChange={handlePageChange}
+                                    showSizeChanger
+                                    pageSizeOptions={["10", "20", "50", "100"]}
+                                  />
+                                </div>
+                              </div>
+                            </>
                           )}
                         </div>
                       </>
