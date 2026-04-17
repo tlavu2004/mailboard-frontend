@@ -21,6 +21,7 @@ export interface KanbanCardType {
   hasCloudLinks: boolean;
   hasPhysicalAttachments: boolean;
   kanbanOrder?: number;
+  summarySource?: string;
 }
 
 export interface ColMeta {
@@ -48,6 +49,7 @@ const transformCard = (data: any): KanbanCardType => ({
   hasCloudLinks: data.has_cloud_links,
   hasPhysicalAttachments: data.has_physical_attachments,
   kanbanOrder: data.kanban_order,
+  summarySource: data.summary_source || undefined,
 });
 
 export const DEFAULT_STATUSES = ['INBOX', 'TODO', 'IN_PROGRESS', 'DONE', 'SNOOZED'];
@@ -57,7 +59,7 @@ const transformColumn = (data: any): KanbanColumn => {
   // The backend now sends linkedStatus or id as the 'key'.
   const key = data.key || String(data.id);
   const isDefault = !!(data.isDefault || (data.key && DEFAULT_STATUSES.includes(data.key)));
-  
+
   return {
     id: String(data.id),
     userId: data.userId || '',

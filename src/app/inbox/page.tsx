@@ -663,6 +663,12 @@ export default function InboxPage() {
   };
 
   const handleSummarize = async (email: Email) => {
+    // Avoid calling backend if this email already has a Gemini-generated summary
+    if (email.summarySource === 'GEMINI' && email.summary) {
+      message.info('Already summarized by Gemini');
+      return;
+    }
+
     setLoadingSummary(true);
     try {
       const response = await apiClient.post<string>(`emails/${email.id}/summarize`);

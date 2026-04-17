@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { RobotOutlined, ClockCircleOutlined, PaperClipOutlined, LoadingOutlined, CloudOutlined, LinkOutlined } from '@ant-design/icons';
-import { Popover } from 'antd';
+import { Popover, message } from 'antd';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import dayjs from 'dayjs';
@@ -56,10 +56,16 @@ function KanbanCard({ card, onRefresh, onSnooze, onClick }: KanbanCardProps) {
 
   const handleSummarize = async (e: React.MouseEvent) => {
     e.stopPropagation();
-
     // If currently showing summary, switch to original view
     if (summary && !showOriginal) {
       setShowOriginal(true);
+      return;
+    }
+
+    // If the card already has a Gemini summary, avoid regenerating to save resources
+    if (card.summarySource === 'GEMINI' && summary) {
+      setShowOriginal(false);
+      message.info('Already summarized by Gemini');
       return;
     }
 
@@ -128,8 +134,8 @@ function KanbanCard({ card, onRefresh, onSnooze, onClick }: KanbanCardProps) {
       </div>
 
       {/* Content Area (Clickable) */}
-      <div 
-        className="mb-2 cursor-pointer" 
+      <div
+        className="mb-2 cursor-pointer"
         onClick={(e) => {
           e.stopPropagation();
           handleCardClick();
