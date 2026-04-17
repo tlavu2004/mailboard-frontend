@@ -194,3 +194,14 @@
 .ant-pagination.ant-pagination-simple .ant-pagination-next {
   margin: 0 6px;
 }
+
+/* Remove extra top spacing inside the inbox list scroll container */
+.inbox-list-scroll .ant-list {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+.inbox-list-scroll .ant-list-item {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
