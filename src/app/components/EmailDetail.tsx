@@ -161,8 +161,14 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
   };
 
   const sender = getSenderInfo();
-  const toList = email.to || [];
-  const ccList = email.cc || [];
+  const toList = (email.to || []).filter(Boolean);
+  const rawCcList = email.cc || [];
+  const ccList = (rawCcList || []).map((r: any) => (typeof r === 'string' ? r.trim() : r)).filter((r: any) => {
+    if (!r) return false;
+    if (typeof r === 'string') return r.length > 0;
+    if (typeof r === 'object') return Boolean(r.email || r.name);
+    return true;
+  });
   const displayDate = email.receivedAt || email.createdAt || (email as any).sentAt;
 
   // Helper to render recipient strings regardless of DTO format (V10.28)
@@ -254,17 +260,18 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             </div>
           </div>
 
-          <Space wrap style={{ marginTop: '8px' }}>
-            <Button type="primary" onClick={() => onReply && onReply(email)}>
+          <Space wrap size={6} className="email-detail-actions" style={{ marginTop: '6px' }}>
+            <Button size="small" type="primary" onClick={() => onReply && onReply(email)}>
               Reply
             </Button>
-            <Button onClick={() => onReply && onReply(email)}>
+            <Button size="small" onClick={() => onReply && onReply(email)}>
               Reply All
             </Button>
-            <Button onClick={() => onForward && onForward(email)}>
+            <Button size="small" onClick={() => onForward && onForward(email)}>
               Forward
             </Button>
             <Button
+              size="small"
               icon={email.isStarred ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined />}
               onClick={(e) => onStar(e, email)}
             >
@@ -280,15 +287,16 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
               trigger="click"
               placement="bottomRight"
             >
-              <Button icon={<ClockCircleOutlined />}>
+              <Button size="small" icon={<ClockCircleOutlined />}>
                 Snooze
               </Button>
             </Popover>
 
-            <Button icon={<DeleteOutlined />} danger onClick={(e) => onDelete(e, email)}>
+            <Button size="small" icon={<DeleteOutlined />} danger onClick={(e) => onDelete(e, email)}>
               Delete
             </Button>
             <Button
+              size="small"
               icon={<ExportOutlined />}
               onClick={handleOpenInGmail}
               title="Open in Gmail"
@@ -296,6 +304,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
               Open in Gmail
             </Button>
             <Button
+              size="small"
               icon={<RobotOutlined />}
               onClick={() => onSummarize && onSummarize(email)}
               loading={loadingSummary}

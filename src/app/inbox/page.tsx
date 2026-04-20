@@ -425,7 +425,8 @@ export default function InboxPage() {
       } else if (isResizing) {
         // Calculate relative to sidebarWidth to avoid jitter and hardcoding
         const newWidth = e.clientX - sidebarWidth;
-        if (newWidth > 400 && newWidth < 800) {
+        // Enforce a minimum width of 400px to prevent truncation of pagination text
+        if (newWidth >= 400 && newWidth < 800) {
           setListWidth(newWidth);
         }
       }

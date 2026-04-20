@@ -148,7 +148,7 @@
   transition: background 0.2s, width 0.2s;
   position: relative;
   z-index: 50;
-  margin: 0 -2px;
+  margin: 0 -1px;
   flex-shrink: 0;
 }
 
@@ -208,20 +208,27 @@
 
 /* Compact footer pagination: keep controls on one line and truncate the range text */
 .inbox-pagination-footer {
-  padding: 8px 12px;
+  padding: 8px 8px 8px 12px;
+  /* small right padding so controls sit near edge */
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  /* left info and right controls */
+  gap: 8px;
   border-top: 1px solid #e6edf3;
   background: #fcfdff;
   flex-wrap: nowrap;
+  position: relative;
+  z-index: 70;
+  /* above resize handle */
+  overflow: visible;
 }
 
 .inbox-pagination-info {
   font-size: 13px;
   color: #6b7280;
-  min-width: 80px;
+  min-width: 100px;
+  /* compact to fit within 400px list width */
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -231,11 +238,33 @@
 .inbox-pagination-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
+}
+
+.inbox-pagination-controls {
+  margin-left: auto;
+  /* force controls to the right when needed */
 }
 
 /* Ensure the page size selector doesn't push pagination to a new row */
 .inbox-pagination-controls .ant-select {
-  min-width: 72px;
+  min-width: 44px;
+  /* shrink select to save space */
+}
+
+/* Hide overflow inside footer so controls don't appear outside the column */
+.inbox-pagination-footer {
+  overflow: hidden;
+}
+
+/* Email detail action buttons - slightly smaller text and tighter padding */
+.email-detail-actions .ant-btn {
+  font-size: 13px !important;
+  padding: 6px 10px !important;
+  min-height: 30px !important;
+}
+
+.email-detail-actions .ant-btn .anticon {
+  font-size: 14px !important;
 }
