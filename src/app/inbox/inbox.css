@@ -205,3 +205,37 @@
   padding-top: 0 !important;
   padding-bottom: 0 !important;
 }
+
+/* Compact footer pagination: keep controls on one line and truncate the range text */
+.inbox-pagination-footer {
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid #e6edf3;
+  background: #fcfdff;
+  flex-wrap: nowrap;
+}
+
+.inbox-pagination-info {
+  font-size: 13px;
+  color: #6b7280;
+  min-width: 80px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inbox-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Ensure the page size selector doesn't push pagination to a new row */
+.inbox-pagination-controls .ant-select {
+  min-width: 72px;
+}

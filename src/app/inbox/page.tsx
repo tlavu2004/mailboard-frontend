@@ -425,7 +425,7 @@ export default function InboxPage() {
       } else if (isResizing) {
         // Calculate relative to sidebarWidth to avoid jitter and hardcoding
         const newWidth = e.clientX - sidebarWidth;
-        if (newWidth > 250 && newWidth < 800) {
+        if (newWidth > 400 && newWidth < 800) {
           setListWidth(newWidth);
         }
       }
@@ -1120,13 +1120,14 @@ export default function InboxPage() {
                         </div>
 
                         {/* Footer pagination: placed outside the scroll area so it stays pinned to bottom of left column */}
-                        <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #e6edf3', background: '#fcfdff' }}>
-                          <div style={{ fontSize: '13px', color: '#6b7280', minWidth: 160 }}>
+                        <div className="inbox-pagination-footer">
+                          <div className="inbox-pagination-info">
                             {totalEmails > 0 ? `${Math.min(((currentPage - 1) * pageSize) + 1, totalEmails)}-${Math.min(currentPage * pageSize, totalEmails)} of ${totalEmails} emails` : 'No emails'}
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <div className="inbox-pagination-controls compact-pagination">
                             <Pagination
                               simple
+                              size="small"
                               current={currentPage}
                               total={totalEmails}
                               pageSize={pageSize}
