@@ -192,7 +192,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
         </Button>
       )}
 
-      <div style={{ maxWidth: '900px', margin: '0 auto', padding: showMobileDetail ? '0 16px 16px' : '0 16px' }}>
+      <div style={{ width: '100%', margin: 0, padding: showMobileDetail ? '0 12px 12px' : '0 12px' }}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <div style={{ marginBottom: '8px' }}>
             <Title level={3} style={{ marginTop: '12px', marginBottom: '8px' }}>{email.subject}</Title>
@@ -353,7 +353,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                 overflow: 'hidden',
                 border: '1px solid #eef2f6',
                 width: '100%',
-                maxWidth: '960px',
+                maxWidth: 'none',
                 boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
                 backgroundColor: '#ffffff'
               }}
@@ -363,7 +363,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                 <div style={{ textAlign: 'center', padding: '60px 40px' }}>
                   {/* V29: Resilience Fallback - if high-fidelity body is missing, show preview/snipppet */}
                   {email.id && email.preview ? (
-                    <div style={{ textAlign: 'left', maxWidth: '800px', margin: '0 auto' }}>
+                    <div style={{ textAlign: 'left', width: '100%', margin: 0 }}>
                       <div style={{ color: '#5f6368', marginBottom: '16px', fontSize: '14px', borderBottom: '1px solid #f1f3f4', paddingBottom: '8px' }}>
                         <RobotOutlined /> Note: High-fidelity content unavailable. Showing preview snippet.
                       </div>
