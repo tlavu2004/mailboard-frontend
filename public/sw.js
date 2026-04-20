@@ -58,10 +58,10 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) => {
       return Promise.all(
         keys.filter(key => key !== CACHE_NAME && key !== API_CACHE_NAME)
-            .map(key => {
-              console.log('[SW] Clean old cache:', key);
-              return caches.delete(key).catch(err => console.warn('[SW] Delete fail:', key, err.message));
-            })
+          .map(key => {
+            console.log('[SW] Clean old cache:', key);
+            return caches.delete(key).catch(err => console.warn('[SW] Delete fail:', key, err.message));
+          })
       );
     }).then(() => {
       console.log('[SW] Now controlling all clients');
@@ -90,7 +90,7 @@ self.addEventListener('fetch', (event) => {
         .catch(async () => {
           console.log('[SW] Navigation failed, searching cache...');
           const cache = await caches.open(CACHE_NAME);
-          
+
           // 1. Try to find the exact page in cache (e.g., /inbox)
           const matchedResponse = await cache.match(event.request);
           if (matchedResponse) return matchedResponse;
@@ -121,7 +121,7 @@ self.addEventListener('fetch', (event) => {
           .catch(() => {
             // If offline and not in cache, return a null response that the browser can handle
             // or a 404 equivalent
-            return null; 
+            return null;
           });
 
         // CRITICAL FIX: If both are null/undefined, we MUST return a valid Response or 
