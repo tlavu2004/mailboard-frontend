@@ -32,7 +32,7 @@ export interface ColMeta {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const transformCard = (data: any): KanbanCardType => ({
-  id: data.id,
+  id: String(data.id),
   messageId: data.message_id,
   gmailMessageId: data.gmail_message_id,
   threadId: data.thread_id,

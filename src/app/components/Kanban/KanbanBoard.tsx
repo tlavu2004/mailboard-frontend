@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { message } from 'antd';
 import {
   DndContext,
@@ -36,7 +36,7 @@ export interface ColumnWithMeta extends ColMeta {
   id: string; // Database ID for sortable items
 }
 
-export default function KanbanBoard({ 
+export default function KanbanBoard({
   onCardClick,
   filters,
   sortMode,
@@ -47,7 +47,7 @@ export default function KanbanBoard({
   onAddColumnClick,
   initialSelectedColumnId,
   triggerAddOnOpen,
-}: { 
+}: {
   onCardClick: (card: KanbanCardType) => void,
   filters: FilterState,
   sortMode: SortMode,
@@ -66,12 +66,35 @@ export default function KanbanBoard({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeIsColumn, setActiveIsColumn] = useState(false); // track dragged type to avoid ID conflicts
   const [syncLoading, setSyncLoading] = useState(false);
+  const boardRef = useRef<HTMLDivElement | null>(null);
+  const dragPreviewRef = useRef<KanbanCardType | null>(null);
+  const [boardKey, setBoardKey] = useState(0);
+
+  const scrollToColumn = useCallback((colKey: string) => {
+    const container = boardRef.current;
+    if (!container || !colKey) return;
+
+    // Try to find matching element case-insensitively
+    const nodes = Array.from(container.querySelectorAll('[data-column-key]')) as HTMLElement[];
+    const lower = colKey.toLowerCase();
+    let target: HTMLElement | undefined = nodes.find(n => (n.dataset.columnKey || '').toLowerCase() === lower);
+    if (!target) {
+      // fallback: try direct query
+      target = container.querySelector(`[data-column-key="${colKey}"]`) as HTMLElement | null || undefined;
+    }
+    if (target) {
+      // Center column into view horizontally
+      const left = target.offsetLeft - (container.offsetLeft || 0);
+      const center = Math.max(0, left + (target.offsetWidth / 2) - (container.clientWidth / 2));
+      container.scrollTo({ left: center, behavior: 'smooth' });
+    }
+  }, []);
 
   // Fetch only column metadata (lighter than full board)
   const fetchColumnsMeta = useCallback(async () => {
     try {
       // Force refresh with cache buster
-      const columnsData = await kanbanService.getColumns(); 
+      const columnsData = await kanbanService.getColumns();
       const incomingMeta: ColumnWithMeta[] = columnsData
         .sort((a, b) => a.order - b.order)
         .map(col => ({
@@ -139,6 +162,9 @@ export default function KanbanBoard({
         if (v) finalCols[k] = v;
       });
 
+      console.log('[KanbanBoard] fetchBoard -> meta keys:', incomingMeta.map(m => m.key));
+      console.log('[KanbanBoard] fetchBoard -> finalCols keys:', Object.keys(finalCols).map(k => ({ k, len: finalCols[k]?.length || 0 })));
+
       setColumns(finalCols);
       setMeta(incomingMeta);
       setError('');
@@ -155,10 +181,39 @@ export default function KanbanBoard({
   }, [fetchBoard]);
 
   // Handle real-time notifications
-  const handleNotification = useCallback((msg: { type: string; message: string }) => {
+  const handleNotification = useCallback(async (msg: any) => {
     if (msg.type === 'NEW_EMAILS') {
       message.info('New emails received! Updating Kanban...');
-      fetchBoard();
+      try {
+        await fetchBoard();
+
+        // If backend provided specific email IDs, highlight those cards (no navigation)
+        if (Array.isArray(msg.emailIds) && msg.emailIds.length > 0) {
+          const ids: string[] = msg.emailIds.map((x: any) => String(x));
+          const container = boardRef.current;
+          if (container) {
+            ids.forEach((idToShow: string) => {
+              const cardNode = container.querySelector(`[data-card-id="${idToShow}"]`) as HTMLElement | null;
+              if (cardNode) {
+                // temporary visual highlight
+                const prevTransition = cardNode.style.transition;
+                cardNode.style.transition = 'box-shadow 200ms, transform 200ms';
+                const prevBox = cardNode.style.boxShadow;
+                const prevTransform = cardNode.style.transform;
+                cardNode.style.boxShadow = '0 0 0 4px rgba(99,102,241,0.18)';
+                cardNode.style.transform = 'scale(1.01)';
+                setTimeout(() => {
+                  cardNode.style.boxShadow = prevBox || '';
+                  cardNode.style.transform = prevTransform || '';
+                  cardNode.style.transition = prevTransition || '';
+                }, 1800);
+              }
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to refresh Kanban board on NEW_EMAILS', err);
+      }
     }
   }, [fetchBoard]);
 
@@ -199,6 +254,20 @@ export default function KanbanBoard({
     setActiveId(event.active.id as string);
     // Use data.type to distinguish columns from cards — avoids false match when IDs overlap
     setActiveIsColumn(event.active.data.current?.type === 'column');
+    // Store a stable preview of the dragged item so DragOverlay can render it
+    try {
+      const id = event.active.id as string;
+      for (const key in columns) {
+        const found = columns[key].find(c => c.id === id);
+        if (found) {
+          dragPreviewRef.current = found;
+          break;
+        }
+      }
+    } catch (err) {
+      // ignore
+    }
+
   };
 
   const handleDragOver = (event: any) => {
@@ -233,7 +302,7 @@ export default function KanbanBoard({
 
       let newIndex;
       // Determine if we are over a column itself or a card inside it
-      
+
       if (isOverColumn) {
         newIndex = overItems.length;
       } else {
@@ -257,40 +326,147 @@ export default function KanbanBoard({
     });
   };
 
-  const handleCardSnooze = useCallback((cardId: string, until: string) => {
-    // Immediate UI Update: Remove card from current column and potentially add to SNOOZED
-    setColumns(prev => {
-      const newCols = { ...prev };
-      let snoozedItem: KanbanCardType | undefined;
+  // Debounced refresh helper to coalesce multiple snooze events and avoid races
+  const refreshDebounceRef = useRef<number | null>(null);
+  const scheduleFetchBoard = useCallback(() => {
+    if (refreshDebounceRef.current) {
+      window.clearTimeout(refreshDebounceRef.current);
+    }
+    console.log('[KanbanBoard] scheduleFetchBoard: scheduling fetch in 700ms');
 
-      // Find and remove from any column
-      Object.keys(newCols).forEach(key => {
-        const idx = newCols[key].findIndex(c => c.id === cardId);
-        if (idx !== -1) {
-          [snoozedItem] = newCols[key].splice(idx, 1);
-          newCols[key] = [...newCols[key]];
-        }
+    // Slightly longer debounce to allow backend to process snooze
+    refreshDebounceRef.current = window.setTimeout(() => {
+      console.log('[KanbanBoard] scheduleFetchBoard: executing fetchBoard');
+
+      fetchBoard();
+      refreshDebounceRef.current = null;
+    }, 700);
+  }, [fetchBoard]);
+
+  const handleCardSnooze = useCallback((cardId: string, until: string) => {
+    console.log('[KanbanBoard] handleCardSnooze called', { cardId, until, metaKeys: meta.map(m => m.key) });
+
+
+    // If a drag is currently active, avoid mutating columns (which causes the DragOverlay to show a floating placeholder).
+    // Instead, clear the active drag and schedule a fetch to let the server return the updated board.
+    if (activeId) {
+      console.log('[KanbanBoard] active drag detected during snooze, clearing active drag and remounting DnD to clear shadow');
+
+      // Clear local drag state
+      setActiveId(null);
+      setActiveIsColumn(false);
+      dragPreviewRef.current = null;
+      // Force remount of the DnD context to clear any internal drag overlay state
+      setBoardKey(k => k + 1);
+      // Allow remount to settle then fetch board to reconcile state
+      window.setTimeout(() => fetchBoard(), 60);
+      return;
+    }
+
+    // No active drag - perform optimistic move to Snoozed column and refresh in background
+    setColumns((prev) => {
+      console.log('[KanbanBoard] setColumns(prev) called - prev sizes:', Object.keys(prev).map(k => ({ k, len: prev[k].length })));
+
+      // shallow-copy the top-level map and each array to avoid mutating state
+      const newCols: Record<string, KanbanCardType[]> = {};
+      Object.keys(prev).forEach(k => {
+        newCols[k] = prev[k] ? prev[k].slice() : [];
       });
 
-      // Add to SNOOZED if it exists in state
-      if (snoozedItem && newCols['SNOOZED']) {
-        newCols['SNOOZED'] = [
-          { ...snoozedItem, snoozedUntil: until },
-          ...newCols['SNOOZED']
-        ];
+      // Remove any existing occurrences across all columns
+      let foundItem: KanbanCardType | undefined;
+      for (const k of Object.keys(newCols)) {
+        const idx = newCols[k].findIndex(c => c.id === cardId);
+        if (idx !== -1) {
+          foundItem = newCols[k][idx];
+          newCols[k].splice(idx, 1);
+        }
       }
+
+      // Find the key for the Snoozed column from meta (be tolerant to case and variants)
+      const snoozedMeta = meta.find(m => {
+        const k = (m.key || '').toLowerCase();
+        const l = (m.label || '').toLowerCase();
+        return k.includes('snooz') || l.includes('snooz');
+      });
+      let snoozedKey: string | undefined = snoozedMeta ? snoozedMeta.key : undefined;
+
+      // If meta didn't reveal it, try to find a matching key in current columns state
+      if (!snoozedKey) {
+        const foundInPrev = Object.keys(prev).find(k => k.toLowerCase().includes('snooz'));
+        if (foundInPrev) snoozedKey = foundInPrev;
+      }
+
+      if (!snoozedKey) {
+        console.warn('[KanbanBoard] Could not determine Snoozed column key; aborting optimistic placement and refreshing from server. Meta keys:', meta.map(m => m.key));
+
+        // Immediately fetch board to reconcile
+        fetchBoard();
+        return prev;
+      }
+
+      if (!newCols[snoozedKey]) newCols[snoozedKey] = [];
+
+      // If the card already exists in Snoozed, update it. Otherwise insert at the top.
+      const existingIdx = newCols[snoozedKey].findIndex(c => c.id === cardId);
+      if (existingIdx !== -1) {
+        newCols[snoozedKey][existingIdx] = { ...newCols[snoozedKey][existingIdx], snoozedUntil: until };
+      } else {
+        const placeholder: KanbanCardType = foundItem ? { ...foundItem, snoozedUntil: until } : {
+          id: cardId,
+          sender: '',
+          subject: '',
+          summary: '',
+          preview: '',
+          gmailUrl: '',
+          receivedAt: new Date().toISOString(),
+          isRead: false,
+          hasAttachments: false,
+          hasCloudLinks: false,
+          hasPhysicalAttachments: false,
+          kanbanOrder: Date.now(),
+          snoozedUntil: until
+        } as KanbanCardType;
+
+        newCols[snoozedKey] = [placeholder, ...newCols[snoozedKey]];
+      }
+
+      console.log('[KanbanBoard] setColumns -> new sizes:', Object.keys(newCols).map(k => ({ k, len: newCols[k].length })));
 
       return newCols;
     });
-    
-    // Then refresh in background to stay in sync with server
+
+    // Refresh immediately to reconcile with server state
     fetchBoard();
-  }, [fetchBoard]);
+  }, [meta, scheduleFetchBoard, fetchBoard, activeId]);
+
+  // Listen for external snooze events (e.g. snoozed from EmailDetail modal)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      try {
+        const ce = e as CustomEvent;
+        const detail = ce.detail || {};
+        console.log('[KanbanBoard] Received kanban:snoozed event', detail);
+
+        // schedule a refresh to reflect server state
+        scheduleFetchBoard();
+        // If an external snooze occurred while a DragOverlay is active, clear it
+        setActiveId(null);
+        setActiveIsColumn(false);
+      } catch (err) {
+        console.warn('kanban:snoozed handler error', err);
+      }
+    };
+    window.addEventListener('kanban:snoozed', handler as EventListener);
+    return () => window.removeEventListener('kanban:snoozed', handler as EventListener);
+  }, [scheduleFetchBoard]);
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     const activeIdVal = active.id as string;
     setActiveId(null);
+    // clear stable preview when drag ends
+    dragPreviewRef.current = null;
 
     if (!over) return;
     const overId = over.id as string;
@@ -298,12 +474,12 @@ export default function KanbanBoard({
     // Check if we are dragging a COLUMN or a CARD — use data.type, not ID comparison
     const isActiveColumn = active.data.current?.type === 'column';
     const cleanActiveId = activeIdVal.startsWith('col-') ? activeIdVal.replace('col-', '') : activeIdVal;
-    
+
     setActiveIsColumn(false);
     if (isActiveColumn) {
       const cleanOverId = overId.startsWith('col-') ? overId.replace('col-', '') : overId;
       if (cleanActiveId === cleanOverId) return;
-      
+
       const oldIndex = meta.findIndex(m => m.id === cleanActiveId);
       const newIndex = meta.findIndex(m => m.id === cleanOverId);
       if (newIndex === -1) return; // Dropped over something that isn't a column
@@ -337,14 +513,14 @@ export default function KanbanBoard({
     if (!movedItem) return;
 
     // Calculate new position and order
-    const prevItem = currentItems[activeIndex - 1]; 
-    const nextItem = currentItems[activeIndex + 1]; 
-    
+    const prevItem = currentItems[activeIndex - 1];
+    const nextItem = currentItems[activeIndex + 1];
+
     let newOrder: number;
-    const GAP = 1000; 
+    const GAP = 1000;
 
     if (!prevItem && !nextItem) {
-      newOrder = Date.now(); 
+      newOrder = Date.now();
     } else if (!prevItem) {
       newOrder = (nextItem.kanbanOrder || 0) + GAP;
     } else if (!nextItem) {
@@ -360,13 +536,13 @@ export default function KanbanBoard({
     } catch (err) {
       console.error("Move failed", err);
       message.error("Failed to save new position");
-      fetchBoard(); 
+      fetchBoard();
     }
   };
 
   const renderActiveOverlay = () => {
     if (!activeId) return null;
-    
+
     // 1. Check if it's a column (use activeIsColumn state, NOT meta.find by ID)
     if (activeIsColumn) {
       const cleanId = activeId.startsWith('col-') ? activeId.replace('col-', '') : activeId;
@@ -379,9 +555,9 @@ export default function KanbanBoard({
             label={foundMeta.label}
             color={foundMeta.color}
             cards={processedColumns[foundMeta.key] || []}
-            onRefresh={() => {}}
-            onSnooze={() => {}}
-            onCardClick={() => {}}
+            onRefresh={() => { }}
+            onSnooze={() => { }}
+            onCardClick={() => { }}
           />
         );
       }
@@ -392,7 +568,16 @@ export default function KanbanBoard({
       const found = columns[key].find(c => c.id === activeId);
       if (found) return (
         <div style={{ pointerEvents: 'none' }}>
-           <KanbanCard card={found} onRefresh={() => { }} onSnooze={() => { }} onClick={() => { }} />
+          <KanbanCard card={found} onRefresh={() => { }} onSnooze={() => { }} onClick={() => { }} isSnoozed={String(key).toLowerCase().includes('snooz')} />
+        </div>
+      );
+    }
+
+    // If the card was removed from columns due to optimistic updates, fall back to the stable preview
+    if (dragPreviewRef.current && dragPreviewRef.current.id === activeId) {
+      return (
+        <div style={{ pointerEvents: 'none' }}>
+          <KanbanCard card={dragPreviewRef.current} onRefresh={() => { }} onSnooze={() => { }} onClick={() => { }} isSnoozed={Boolean(dragPreviewRef.current?.snoozedUntil)} />
         </div>
       );
     }
@@ -435,9 +620,10 @@ export default function KanbanBoard({
   }
 
   return (
-    <div className="h-full overflow-x-auto p-5 bg-gray-50 flex flex-col pt-0">
+    <div ref={boardRef} className="h-full overflow-x-auto p-5 bg-gray-50 flex flex-col pt-0">
 
       <DndContext
+        key={boardKey}
         sensors={sensors}
         collisionDetection={closestCorners}
         onDragStart={handleDragStart}
@@ -460,8 +646,8 @@ export default function KanbanBoard({
               />
             ))}
           </SortableContext>
-          
-          <AddColumnButton onClick={onAddColumnClick || (() => {})} />
+
+          <AddColumnButton onClick={onAddColumnClick || (() => { })} />
         </div>
 
         <DragOverlay>
@@ -480,6 +666,7 @@ export default function KanbanBoard({
           return acc;
         }, {} as Record<string, number>)}
       />
+
     </div>
   );
 }

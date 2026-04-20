@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { RobotOutlined, ClockCircleOutlined, PaperClipOutlined, LoadingOutlined, CloudOutlined, LinkOutlined } from '@ant-design/icons';
-import { Popover, message } from 'antd';
+import { Popover, message, Tooltip } from 'antd';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import dayjs from 'dayjs';
@@ -11,6 +11,7 @@ interface KanbanCardProps {
   onRefresh: () => void;
   onSnooze: (cardId: string, until: string) => void;
   onClick: (card: KanbanCardType) => void;
+  isSnoozed?: boolean;
 }
 
 import SnoozePopover from '../SnoozePopover';
@@ -20,7 +21,7 @@ import SnoozePopover from '../SnoozePopover';
 // Export memoized component
 export default React.memo(KanbanCard);
 
-function KanbanCard({ card, onRefresh, onSnooze, onClick }: KanbanCardProps) {
+function KanbanCard({ card, onRefresh, onSnooze, onClick, isSnoozed }: KanbanCardProps) {
   // ... implementation remains the same
   const {
     attributes,
@@ -86,12 +87,14 @@ function KanbanCard({ card, onRefresh, onSnooze, onClick }: KanbanCardProps) {
 
   const handleSnooze = async (until: string) => {
     try {
+      console.log('[KanbanCard] snooze start', { id: card.id, until });
       await kanbanService.snoozeCard(card.id, until);
       setShowSnooze(false);
       // Trigger instant UI feedback
+      console.log('[KanbanCard] snooze success, calling onSnooze', { id: card.id, until });
       onSnooze(card.id, until);
     } catch (err) {
-      console.error(err);
+      console.error('[KanbanCard] snooze error', err);
     }
   };
 
@@ -114,6 +117,7 @@ function KanbanCard({ card, onRefresh, onSnooze, onClick }: KanbanCardProps) {
   return (
     <div
       ref={setNodeRef}
+      data-card-id={card.id}
       style={style}
       {...attributes}
       {...listeners}
@@ -185,23 +189,35 @@ function KanbanCard({ card, onRefresh, onSnooze, onClick }: KanbanCardProps) {
               {loadingSummary ? <LoadingOutlined spin /> : <RobotOutlined />}
             </button>
             <div className="relative" onPointerDown={(e) => e.stopPropagation()}>
-              <Popover
-                content={<SnoozePopover onConfirm={handleSnooze} />}
-                trigger="click"
-                open={showSnooze}
-                onOpenChange={setShowSnooze}
-                placement="bottomRight"
-                styles={{ body: { padding: 0 } }}
-                destroyOnHidden
-              >
-                <button
-                  className="p-1.5 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                  title="Snooze"
-                  onClick={(e) => e.stopPropagation()}
+              {!isSnoozed ? (
+                <Popover
+                  content={<SnoozePopover onConfirm={handleSnooze} />}
+                  trigger="click"
+                  open={showSnooze}
+                  onOpenChange={setShowSnooze}
+                  placement="bottomRight"
+                  styles={{ body: { padding: 0 } }}
+                  destroyOnHidden
                 >
-                  <ClockCircleOutlined />
-                </button>
-              </Popover>
+                  <button
+                    className="p-1.5 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                    title="Snooze"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ClockCircleOutlined />
+                  </button>
+                </Popover>
+              ) : (
+                <Tooltip title="Already snoozed">
+                  <button
+                    className="p-1.5 rounded text-gray-300 cursor-not-allowed"
+                    title="Already snoozed"
+                    disabled
+                  >
+                    <ClockCircleOutlined />
+                  </button>
+                </Tooltip>
+              )}
             </div>
           </div>
         </div>

@@ -110,6 +110,25 @@ export default function InboxPage() {
   const searchInputRef = useRef<any>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  const scrollToEmailInList = useCallback((emailId: string | number) => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const tryScroll = (attempts = 0) => {
+      const el = container.querySelector(`#email-item-${emailId}`) as HTMLElement | null;
+      if (el) {
+        const top = el.offsetTop;
+        container.scrollTo({ top: Math.max(0, top - 8), behavior: 'smooth' });
+        return;
+      }
+      if (attempts < 6) {
+        setTimeout(() => tryScroll(attempts + 1), 100);
+      }
+    };
+
+    tryScroll();
+  }, []);
+
   // Reset active index when emails or view mode change
   useEffect(() => {
     setActiveIndex(-1);
@@ -463,6 +482,7 @@ export default function InboxPage() {
                 console.warn('[InboxPage] Failed to fetch new email detail for id', id, err);
               }
             }
+            // No automatic navigation/scroll requested — UI updated in-place
           } catch (e) {
             console.warn('[InboxPage] Error processing NEW_EMAILS payload', e);
             // Fallback to full refresh
@@ -520,7 +540,10 @@ export default function InboxPage() {
       if (emailToDelete) handleDelete(new MouseEvent('click') as any, emailToDelete);
     },
     'Escape': () => {
-      if (selectedEmail) setSelectedEmail(null);
+      if (selectedEmail) {
+        setSelectedEmail(null);
+        setShowMobileDetail(false);
+      }
       if (isComposeVisible) handleComposeClose();
       if (isSearching) handleSearch('');
       setActiveIndex(-1);
@@ -536,8 +559,15 @@ export default function InboxPage() {
     try {
       message.loading({ content: 'Snoozing email...', key: 'snooze' });
       await kanbanService.snoozeCard(emailId, until);
+      // Notify Kanban board (in case snooze was triggered from a modal or list)
+      try {
+        window.dispatchEvent(new CustomEvent('kanban:snoozed', { detail: { emailId, until } }));
+      } catch (err) {
+        // ignore in non-browser contexts
+      }
       message.success({ content: 'Email snoozed!', key: 'snooze' });
       setSelectedEmail(null);
+      setShowMobileDetail(false);
       loadEmails(selectedMailbox);
     } catch (error) {
       console.error('Snooze failed:', error);
@@ -1013,74 +1043,76 @@ export default function InboxPage() {
                             {mailboxes.find(m => m.id === selectedMailbox)?.name || 'Inbox'}
                           </Title>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-2 inbox-list-scroll" style={{ paddingLeft: '24px', paddingRight: '12px' }}>
+                        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-2 inbox-list-scroll" style={{ paddingLeft: '24px', paddingRight: '12px' }}>
                           {emailsLoading ? <div className="p-12 text-center"><Spin /></div> : (
                             <>
                               <List
                                 dataSource={emails}
                                 renderItem={(email, index) => (
-                                  <Card
-                                    hoverable
-                                    className={`mail-item-card cursor-pointer transition-all ${selectedEmail?.id === email.id ? 'email-card-selected' : ''}`}
-                                    styles={{ body: { padding: '12px' } }}
-                                    onClick={() => {
-                                      setActiveIndex(index);
-                                      handleEmailSelect(email);
-                                    }}
-                                  >
-                                    <div className="flex items-start gap-3">
-                                      {/* Left: Avatar */}
-                                      <Avatar
-                                        className="flex-shrink-0"
-                                        style={{ backgroundColor: email.isRead ? '#f1f5f9' : '#e0e7ff', color: email.isRead ? '#64748b' : '#4f46e5', fontWeight: 600 }}
-                                      >
-                                        {email.from.name ? email.from.name.charAt(0).toUpperCase() : '?'}
-                                      </Avatar>
+                                  <div id={`email-item-${email.id}`} key={email.id}>
+                                    <Card
+                                      hoverable
+                                      className={`mail-item-card cursor-pointer transition-all ${selectedEmail?.id === email.id ? 'email-card-selected' : ''}`}
+                                      styles={{ body: { padding: '12px' } }}
+                                      onClick={() => {
+                                        setActiveIndex(index);
+                                        handleEmailSelect(email);
+                                      }}
+                                    >
+                                      <div className="flex items-start gap-3">
+                                        {/* Left: Avatar */}
+                                        <Avatar
+                                          className="flex-shrink-0"
+                                          style={{ backgroundColor: email.isRead ? '#f1f5f9' : '#e0e7ff', color: email.isRead ? '#64748b' : '#4f46e5', fontWeight: 600 }}
+                                        >
+                                          {email.from.name ? email.from.name.charAt(0).toUpperCase() : '?'}
+                                        </Avatar>
 
-                                      {/* Middle: Content */}
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex justify-between items-start mb-0.5">
-                                          <div className="flex items-center gap-2 min-w-0">
-                                            {!email.isRead && <div className="unread-dot flex-shrink-0" />}
-                                            <Text strong={!email.isRead} className="mail-item-sender truncate">
-                                              {email.from.name}
-                                            </Text>
-                                            <div className="flex items-center gap-1 flex-shrink-0">
-                                              {email.hasPhysicalAttachments && (
-                                                <PaperClipOutlined style={{ fontSize: '11px', color: '#94a3b8' }} />
-                                              )}
-                                              {email.hasCloudLinks && (
-                                                <CloudOutlined style={{ fontSize: '11px', color: '#3b82f6' }} />
-                                              )}
+                                        {/* Middle: Content */}
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex justify-between items-start mb-0.5">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                              {!email.isRead && <div className="unread-dot flex-shrink-0" />}
+                                              <Text strong={!email.isRead} className="mail-item-sender truncate">
+                                                {email.from.name}
+                                              </Text>
+                                              <div className="flex items-center gap-1 flex-shrink-0">
+                                                {email.hasPhysicalAttachments && (
+                                                  <PaperClipOutlined style={{ fontSize: '11px', color: '#94a3b8' }} />
+                                                )}
+                                                {email.hasCloudLinks && (
+                                                  <CloudOutlined style={{ fontSize: '11px', color: '#3b82f6' }} />
+                                                )}
+                                              </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-2 flex-shrink-0">
+                                              <div
+                                                onClick={(e) => handleStar(e, email)}
+                                                className="cursor-pointer hover:scale-125 transition-transform duration-200"
+                                              >
+                                                {email.isStarred ? (
+                                                  <StarFilled style={{ color: '#f59e0b', fontSize: '15px' }} />
+                                                ) : (
+                                                  <StarOutlined style={{ color: '#cbd5e1', fontSize: '15px' }} />
+                                                )}
+                                              </div>
+                                              <Text type="secondary" style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>
+                                                {formatDate(email.receivedAt)}
+                                              </Text>
                                             </div>
                                           </div>
 
-                                          <div className="flex items-center gap-2 flex-shrink-0">
-                                            <div
-                                              onClick={(e) => handleStar(e, email)}
-                                              className="cursor-pointer hover:scale-125 transition-transform duration-200"
-                                            >
-                                              {email.isStarred ? (
-                                                <StarFilled style={{ color: '#f59e0b', fontSize: '15px' }} />
-                                              ) : (
-                                                <StarOutlined style={{ color: '#cbd5e1', fontSize: '15px' }} />
-                                              )}
-                                            </div>
-                                            <Text type="secondary" style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>
-                                              {formatDate(email.receivedAt)}
-                                            </Text>
-                                          </div>
+                                          <Text strong={!email.isRead} className="mail-item-subject block truncate">
+                                            {email.subject}
+                                          </Text>
+                                          <Text className="mail-item-preview block truncate" style={{ marginTop: '2px' }}>
+                                            {email.preview}
+                                          </Text>
                                         </div>
-
-                                        <Text strong={!email.isRead} className="mail-item-subject block truncate">
-                                          {email.subject}
-                                        </Text>
-                                        <Text className="mail-item-preview block truncate" style={{ marginTop: '2px' }}>
-                                          {email.preview}
-                                        </Text>
                                       </div>
-                                    </div>
-                                  </Card>
+                                    </Card>
+                                  </div>
                                 )}
                               />
                             </>
