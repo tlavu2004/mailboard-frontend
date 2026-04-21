@@ -129,6 +129,29 @@ export default function InboxPage() {
     tryScroll();
   }, []);
 
+  // Persist list scroll position while user scrolls so reload can restore
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    let timeoutId: number | null = null;
+    const onScroll = () => {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+      timeoutId = window.setTimeout(() => {
+        try { localStorage.setItem('mb:listScrollTop', String(container.scrollTop)); } catch (e) { }
+      }, 150);
+    };
+    container.addEventListener('scroll', onScroll);
+    return () => {
+      container.removeEventListener('scroll', onScroll);
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, []);
+
+  // Restore flag/ref to avoid double-restores during init
+  const isRestoringRef = useRef(false);
+
   // Reset active index when emails or view mode change
   useEffect(() => {
     setActiveIndex(-1);
@@ -248,7 +271,12 @@ export default function InboxPage() {
       setEmails(emailList);
       setTotalEmails(data.total || 0);
       setCurrentPage(page);
-      setSelectedEmail(null);
+      // Preserve selected email when paginating within the same mailbox.
+      setSelectedEmail(prev => (prev && prev.mailboxId === mailboxId) ? prev : null);
+
+      // Persist current page & mailbox so reload can restore
+      try { localStorage.setItem('mb:currentPage', String(page)); } catch (e) { }
+      try { localStorage.setItem('mb:selectedMailbox', mailboxId); } catch (e) { }
 
       // Background enrichment: for items that claim attachments but lack metadata,
       // fetch full detail for a small number to populate attachments quickly.
@@ -286,11 +314,60 @@ export default function InboxPage() {
       console.log('[InboxPage] init: starting mailbox + email load sequence');
       const mailboxId = await loadMailboxes();
       if (cancelled) return;
-      if (mailboxId) {
-        console.log('[InboxPage] init: mailboxes loaded, now loading emails for', mailboxId);
-        await loadEmails(mailboxId, 1, pageSize, filters.unread, filters.hasAttachment);
+
+      // Try to restore last-opened email or mailbox if available in localStorage
+      const savedEmailId = (typeof window !== 'undefined') ? localStorage.getItem('mb:selectedEmailId') : null;
+      const savedPage = (typeof window !== 'undefined') ? Number(localStorage.getItem('mb:currentPage') || '1') : 1;
+      const savedMailbox = (typeof window !== 'undefined') ? localStorage.getItem('mb:selectedMailbox') : null;
+
+      if (savedEmailId) {
+        try {
+          isRestoringRef.current = true;
+          const fullEmail = await emailService.getEmailDetail(savedEmailId);
+          if (cancelled) return;
+          if (fullEmail && fullEmail.mailboxId) {
+            // Ensure mailbox matches the email we restored
+            setSelectedMailbox(fullEmail.mailboxId);
+            await loadEmails(fullEmail.mailboxId, savedPage || 1, pageSize, filters.unread, filters.hasAttachment);
+            setSelectedEmail(fullEmail);
+            setShowMobileDetail(true);
+            // Scroll the list to the restored email
+            setTimeout(() => { try { scrollToEmailInList(fullEmail.id); } catch (e) { } }, 250);
+          } else {
+            // No saved email detail could be fetched; prefer saved mailbox if present
+            const mailboxToLoad = savedMailbox || mailboxId;
+            if (mailboxToLoad) {
+              setSelectedMailbox(mailboxToLoad);
+              await loadEmails(mailboxToLoad, 1, pageSize, filters.unread, filters.hasAttachment);
+            } else {
+              console.warn('[InboxPage] init: no mailbox available to load (restore path)');
+            }
+          }
+        } catch (err) {
+          console.warn('[InboxPage] restore selected email failed:', err);
+          const mailboxToLoad = savedMailbox || mailboxId;
+          if (mailboxToLoad) {
+            setSelectedMailbox(mailboxToLoad);
+            await loadEmails(mailboxToLoad, 1, pageSize, filters.unread, filters.hasAttachment);
+          } else {
+            console.warn('[InboxPage] init: no mailbox available to load (catch path)');
+          }
+        } finally {
+          isRestoringRef.current = false;
+        }
       } else {
-        console.warn('[InboxPage] init: no mailbox returned, emails will not load');
+        const mailboxToLoad = savedMailbox || mailboxId;
+        if (mailboxToLoad) {
+          setSelectedMailbox(mailboxToLoad);
+          await loadEmails(mailboxToLoad, 1, pageSize, filters.unread, filters.hasAttachment);
+        } else {
+          console.warn('[InboxPage] init: no mailbox available to load (no saved email)');
+        }
+        // restore list scroll
+        try {
+          const savedScroll = Number(localStorage.getItem('mb:listScrollTop') || '0');
+          setTimeout(() => { try { if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = savedScroll; } catch (e) { } }, 300);
+        } catch (e) { }
       }
     };
     init();
@@ -356,9 +433,18 @@ export default function InboxPage() {
     setShowMobileDetail(false);
   };
 
+  // Persist mailbox selection to restore on reload
+  useEffect(() => {
+    try {
+      if (selectedMailbox) localStorage.setItem('mb:selectedMailbox', selectedMailbox);
+    } catch (e) { /* ignore */ }
+  }, [selectedMailbox]);
+
   const handleEmailSelect = async (email: Email) => {
     setSelectedEmail(email);
     setShowMobileDetail(true);
+    try { localStorage.setItem('mb:selectedEmailId', String(email.id)); } catch (e) { }
+    try { localStorage.setItem('mb:selectedMailbox', String(email.mailboxId || selectedMailbox)); } catch (e) { }
 
     // If body is missing OR if we expect attachments but don't have them yet, fetch full details
     const needsDetail = !email.body || (email.hasAttachments && (!email.attachments || email.attachments.length === 0));
