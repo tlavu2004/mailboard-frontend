@@ -54,6 +54,15 @@ const iconMap: Record<string, React.ReactNode> = {
   FolderOutlined: <FolderOutlined />,
 };
 
+const parseAsLocalDate = (value?: string): Date => {
+  if (!value) return new Date();
+  const trimmed = value.trim();
+  const hasTimezone = /([zZ]|[+\-]\d{2}:?\d{2})$/.test(trimmed);
+  const normalized = hasTimezone ? trimmed : `${trimmed}Z`;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? new Date(trimmed) : parsed;
+};
+
 export default function InboxPage() {
   const { user, logout } = useAuth();
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([]);
@@ -65,7 +74,7 @@ export default function InboxPage() {
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [isComposeVisible, setIsComposeVisible] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
-  const [composeMode, setComposeMode] = useState<'compose' | 'reply' | 'forward'>('compose');
+  const [composeMode, setComposeMode] = useState<'compose' | 'reply' | 'reply-all' | 'forward'>('compose');
   const [replyToEmail, setReplyToEmail] = useState<Email | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [accountId, setAccountId] = useState<number | null>(null);
@@ -188,8 +197,52 @@ export default function InboxPage() {
   };
 
   const handleReply = (email: Email) => {
+    const senderEmail = email.from?.email || '';
+    const localPart = senderEmail.split('@')[0]?.toLowerCase() || '';
+    const isNoReplySender = /(?:^|[._-])(noreply|no-reply|donotreply|do-not-reply)(?:$|[._-])/.test(localPart);
+
+    if (isNoReplySender) {
+      Modal.confirm({
+        title: 'Sender may not accept replies',
+        content: `"${senderEmail}" looks like a no-reply address. You can still try replying.`,
+        okText: 'Reply anyway',
+        cancelText: 'Cancel',
+        onOk: () => {
+          setReplyToEmail(email);
+          setComposeMode('reply');
+          setIsComposeVisible(true);
+        },
+      });
+      return;
+    }
+
     setReplyToEmail(email);
     setComposeMode('reply');
+    setIsComposeVisible(true);
+  };
+
+  const handleReplyAll = (email: Email) => {
+    const senderEmail = email.from?.email || '';
+    const localPart = senderEmail.split('@')[0]?.toLowerCase() || '';
+    const isNoReplySender = /(?:^|[._-])(noreply|no-reply|donotreply|do-not-reply)(?:$|[._-])/.test(localPart);
+
+    if (isNoReplySender) {
+      Modal.confirm({
+        title: 'Sender may not accept replies',
+        content: `"${senderEmail}" looks like a no-reply address. You can still try Reply All.`,
+        okText: 'Reply all anyway',
+        cancelText: 'Cancel',
+        onOk: () => {
+          setReplyToEmail(email);
+          setComposeMode('reply-all');
+          setIsComposeVisible(true);
+        },
+      });
+      return;
+    }
+
+    setReplyToEmail(email);
+    setComposeMode('reply-all');
     setIsComposeVisible(true);
   };
 
@@ -453,7 +506,16 @@ export default function InboxPage() {
       try {
         const fullEmail = await emailService.getEmailDetail(email.id);
         console.log('[InboxPage] Fetched full email detail for', fullEmail.id, 'attachmentsCount=', fullEmail.attachments?.length);
-        setSelectedEmail(prev => (prev ? { ...prev, ...fullEmail } : fullEmail));
+        setSelectedEmail(prev => {
+          if (!prev) return fullEmail;
+          return {
+            ...prev,
+            ...fullEmail,
+            to: fullEmail.to && fullEmail.to.length > 0 ? fullEmail.to : prev.to,
+            cc: fullEmail.cc && fullEmail.cc.length > 0 ? fullEmail.cc : prev.cc,
+            bcc: fullEmail.bcc && fullEmail.bcc.length > 0 ? fullEmail.bcc : prev.bcc,
+          };
+        });
       } catch (error) {
         console.error('Failed to load full email body', error);
         message.error('Failed to load email content');
@@ -663,16 +725,16 @@ export default function InboxPage() {
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    const date = parseAsLocalDate(dateString);
     const now = new Date();
     const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
 
     if (diffInHours < 24) {
-      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     } else if (diffInHours < 48) {
       return 'Yesterday';
     } else {
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     }
   };
 
@@ -1268,6 +1330,7 @@ export default function InboxPage() {
                         onStar={handleStar}
                         onDelete={handleDelete}
                         onReply={handleReply}
+                        onReplyAll={handleReplyAll}
                         onForward={handleForward}
                         onSnooze={handleSnooze}
                         onSummarize={handleSummarize}
@@ -1341,11 +1404,13 @@ export default function InboxPage() {
           onCancel={handleComposeClose}
           onSend={handleComposeSend}
           mode={composeMode}
+          currentUserEmail={replyToEmail?.accountEmail || user?.email}
           originalEmail={replyToEmail ? {
             id: replyToEmail.id,
             threadId: replyToEmail.threadId,
             from: replyToEmail.from,
             to: replyToEmail.to,
+            cc: replyToEmail.cc,
             subject: replyToEmail.subject,
             body: replyToEmail.body,
             receivedAt: replyToEmail.receivedAt
@@ -1384,6 +1449,7 @@ export default function InboxPage() {
               onStar={handleStar}
               onDelete={handleDelete}
               onReply={handleReply}
+              onReplyAll={handleReplyAll}
               onForward={handleForward}
               onSnooze={handleSnooze}
               onSummarize={handleSummarize}

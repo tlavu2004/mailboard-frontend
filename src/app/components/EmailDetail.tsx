@@ -21,12 +21,22 @@ import SnoozePopover from './SnoozePopover';
 
 const { Title, Text } = Typography;
 
+const parseAsLocalDate = (value?: string): Date => {
+  if (!value) return new Date();
+  const trimmed = value.trim();
+  const hasTimezone = /([zZ]|[+\-]\d{2}:?\d{2})$/.test(trimmed);
+  const normalized = hasTimezone ? trimmed : `${trimmed}Z`;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? new Date(trimmed) : parsed;
+};
+
 interface EmailDetailProps {
   email: Email | null;
   onBack: () => void;
   onStar: (e: React.MouseEvent, email: Email) => void;
   onDelete: (e: React.MouseEvent, email: Email) => void;
   onReply?: (email: Email) => void;
+  onReplyAll?: (email: Email) => void;
   onForward?: (email: Email) => void;
   onRefresh?: (email: Email) => void;
   onSummarize?: (email: Email) => void;
@@ -45,6 +55,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
   onStar,
   onDelete,
   onReply,
+  onReplyAll,
   onForward,
   onRefresh,
   onSummarize,
@@ -726,7 +737,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                 </div>
               </div>
               <div style={{ fontSize: '12px', color: '#5f6368' }}>
-                Sent: {displayDate ? new Date(displayDate).toLocaleString('en-US', {
+                Sent: {displayDate ? parseAsLocalDate(displayDate).toLocaleString(undefined, {
                   day: 'numeric',
                   month: 'short',
                   year: 'numeric',
@@ -742,7 +753,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             <Button size="small" type="primary" onClick={() => onReply && onReply(email)}>
               Reply
             </Button>
-            <Button size="small" onClick={() => onReply && onReply(email)}>
+            <Button size="small" onClick={() => onReplyAll && onReplyAll(email)}>
               Reply All
             </Button>
             <Button size="small" onClick={() => onForward && onForward(email)}>

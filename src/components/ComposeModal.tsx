@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Modal, Form, Input, Button, message, Upload, Space, Tag, Typography, Image } from 'antd';
-import { 
-  PaperClipOutlined, 
-  SendOutlined, 
+import {
+  PaperClipOutlined,
+  SendOutlined,
   DeleteOutlined,
   FileImageOutlined,
   FileTextOutlined,
@@ -21,23 +21,26 @@ interface ComposeModalProps {
   visible: boolean;
   onCancel: () => void;
   onSend: () => void;
-  mode?: 'compose' | 'reply' | 'forward';
+  mode?: 'compose' | 'reply' | 'reply-all' | 'forward';
+  currentUserEmail?: string;
   originalEmail?: {
     id: string;
     threadId?: string;
     from: { name: string; email: string };
-    to: { name: string; email: string }[];
+    to: Array<{ name: string; email: string } | string>;
+    cc?: Array<{ name: string; email: string } | string>;
     subject: string;
     body: string;
     receivedAt: string;
   };
 }
-const ComposeModal: React.FC<ComposeModalProps> = ({ 
-  visible, 
-  onCancel, 
+const ComposeModal: React.FC<ComposeModalProps> = ({
+  visible,
+  onCancel,
   onSend,
   mode = 'compose',
-  originalEmail 
+  currentUserEmail,
+  originalEmail
 }) => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
@@ -52,17 +55,118 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
   const [bccInputValue, setBccInputValue] = useState('');
   const [showQuotedContent, setShowQuotedContent] = useState(false);
   const [quotedContent, setQuotedContent] = useState('');
-  
+
   const toInputRef = useRef<InputRef>(null);
   const ccInputRef = useRef<InputRef>(null);
   const bccInputRef = useRef<InputRef>(null);
+
+  const parseAsLocalDate = (value?: string): Date => {
+    if (!value) return new Date();
+    const trimmed = value.trim();
+    const hasTimezone = /([zZ]|[+\-]\d{2}:?\d{2})$/.test(trimmed);
+    const normalized = hasTimezone ? trimmed : `${trimmed}Z`;
+    const parsed = new Date(normalized);
+    return Number.isNaN(parsed.getTime()) ? new Date(trimmed) : parsed;
+  };
+
+  const stripTagLikeText = (text: string): string => {
+    return text
+      .replace(/<\/?[a-z][^>\n]*>/gi, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  };
+
+  const htmlToPlainText = (html: string): string => {
+    if (!html) return '';
+
+    // Strip script and style tags + content first (aggressive)
+    let cleaned = html
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+      .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, '')
+      .replace(/<template\b[^<]*(?:(?!<\/template>)<[^<]*)*<\/template>/gi, '');
+
+    if (typeof window !== 'undefined') {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(cleaned, 'text/html');
+      doc.querySelectorAll('script, style, noscript, template').forEach((node) => node.remove());
+      return stripTagLikeText(doc.body.textContent || '');
+    }
+
+    const plainText = cleaned
+      .replace(/<br\s*\/?\s*>/gi, '\n')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/\n{3,}/g, '\n\n');
+
+    return stripTagLikeText(plainText);
+  };
+
+  const mergePendingRecipient = (existing: string[], pendingRaw: string): string[] => {
+    const pending = pendingRaw.trim();
+    if (!pending) return existing;
+
+    if (!validateEmail(pending)) {
+      throw new Error(`Invalid email address: ${pending}`);
+    }
+
+    if (existing.some((email) => email.toLowerCase() === pending.toLowerCase())) {
+      return existing;
+    }
+
+    return [...existing, pending];
+  };
 
   // Initialize form when modal opens
   useEffect(() => {
     if (visible && originalEmail) {
       let subject = originalEmail.subject;
       let toRecipients: string[] = [];
+      let ccRecipients: string[] = [];
       let quoted = '';
+      const normalizedCurrentUser = (currentUserEmail || '').trim().toLowerCase();
+
+      const unique = (emails: string[]) => {
+        const seen = new Set<string>();
+        return emails.filter((email) => {
+          const normalized = email.toLowerCase();
+          if (seen.has(normalized)) {
+            return false;
+          }
+          seen.add(normalized);
+          return true;
+        });
+      };
+
+      const sanitize = (email: string | undefined) => (email || '').trim();
+      const extractAddress = (recipient?: { name?: string; email?: string } | string) => {
+        if (!recipient) return '';
+        const raw = typeof recipient === 'string' ? sanitize(recipient) : sanitize(recipient.email);
+        if (!raw) return '';
+        const bracketMatch = raw.match(/<([^>]+)>/);
+        return sanitize(bracketMatch ? bracketMatch[1] : raw);
+      };
+
+      const normalizeRecipients = (value: unknown): string[] => {
+        if (!value) return [];
+
+        const list: Array<{ name?: string; email?: string } | string> = Array.isArray(value)
+          ? (value as Array<{ name?: string; email?: string } | string>)
+          : [String(value)];
+
+        return list
+          .flatMap((item) => {
+            if (typeof item === 'string') {
+              return item
+                .split(/[;,]/)
+                .map((part) => extractAddress(part))
+                .filter(Boolean);
+            }
+            const extracted = extractAddress(item);
+            return extracted ? [extracted] : [];
+          })
+          .filter(Boolean);
+      };
 
       if (mode === 'reply') {
         // Reply: Send to original sender
@@ -70,18 +174,51 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
         if (!subject.toLowerCase().startsWith('re:')) {
           subject = 'Re: ' + subject;
         }
-        // Store quoted content as HTML
-        quoted = `<div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd;"><p style="color: #666; font-size: 13px;">On ${new Date(originalEmail.receivedAt).toLocaleString()}, ${originalEmail.from.name || originalEmail.from.email} wrote:</p>${originalEmail.body}</div>`;
+        const originalBodyText = htmlToPlainText(originalEmail.body);
+        quoted = `On ${parseAsLocalDate(originalEmail.receivedAt).toLocaleString()}, ${originalEmail.from.name || originalEmail.from.email} wrote:\n${originalBodyText}`;
+      } else if (mode === 'reply-all') {
+        const originalTo = normalizeRecipients(originalEmail.to || []);
+        const originalCc = normalizeRecipients(originalEmail.cc || []);
+        const senderEmail = sanitize(originalEmail.from.email);
+
+        const toCandidates = [senderEmail, ...originalTo]
+          .filter(Boolean)
+          .filter((email) => email.toLowerCase() !== normalizedCurrentUser);
+
+        toRecipients = unique(toCandidates);
+
+        const toSet = new Set(toRecipients.map((email) => email.toLowerCase()));
+
+        // Keep original CC list intact for Reply All as much as possible.
+        ccRecipients = unique(
+          originalCc.filter((email) => !toSet.has(email.toLowerCase()) && email.toLowerCase() !== senderEmail.toLowerCase())
+        );
+
+        // Fallback: if CC was serialized oddly, still show non-sender recipients.
+        if (ccRecipients.length === 0 && originalCc.length > 0) {
+          ccRecipients = unique(originalCc.filter((email) => email.toLowerCase() !== senderEmail.toLowerCase()));
+        }
+
+        if (!subject.toLowerCase().startsWith('re:')) {
+          subject = 'Re: ' + subject;
+        }
+        const originalBodyText = htmlToPlainText(originalEmail.body);
+        quoted = `On ${parseAsLocalDate(originalEmail.receivedAt).toLocaleString()}, ${originalEmail.from.name || originalEmail.from.email} wrote:\n${originalBodyText}`;
       } else if (mode === 'forward') {
         // Forward: Empty recipients
         if (!subject.toLowerCase().startsWith('fwd:')) {
           subject = 'Fwd: ' + subject;
         }
-        // Store quoted content as HTML
-        quoted = `<div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd;"><p style="color: #666; font-size: 13px;">---------- Forwarded message ---------<br/>From: ${originalEmail.from.name || originalEmail.from.email}<br/>Date: ${new Date(originalEmail.receivedAt).toLocaleString()}<br/>Subject: ${originalEmail.subject}</p>${originalEmail.body}</div>`;
+        const originalBodyText = htmlToPlainText(originalEmail.body);
+        quoted = `---------- Forwarded message ---------\nFrom: ${originalEmail.from.name || originalEmail.from.email}\nDate: ${parseAsLocalDate(originalEmail.receivedAt).toLocaleString()}\nSubject: ${originalEmail.subject}\n\n${originalBodyText}`;
       }
 
       setToEmails(toRecipients);
+      setCcEmails(ccRecipients);
+      setBccEmails([]);
+      // Always show CC for Reply All mode, or if there are CC recipients
+      setShowCc(mode === 'reply-all' || ccRecipients.length > 0);
+      setShowBcc(false);
       setQuotedContent(quoted);
       setShowQuotedContent(false); // Always collapsed by default (Gmail style)
       form.setFieldsValue({
@@ -100,7 +237,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
       setQuotedContent('');
       setShowQuotedContent(false);
     }
-  }, [visible, mode, originalEmail, form]);
+  }, [visible, mode, originalEmail, form, currentUserEmail]);
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -153,7 +290,20 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
   };
 
   const handleSend = async (values: { subject: string; body: string }) => {
-    if (toEmails.length === 0) {
+    let finalTo = toEmails;
+    let finalCc = ccEmails;
+    let finalBcc = bccEmails;
+
+    try {
+      finalTo = mergePendingRecipient(toEmails, inputValue);
+      finalCc = mergePendingRecipient(ccEmails, ccInputValue);
+      finalBcc = mergePendingRecipient(bccEmails, bccInputValue);
+    } catch (error) {
+      message.error((error as Error).message);
+      return;
+    }
+
+    if (finalTo.length === 0) {
       message.error('Please add at least one recipient');
       return;
     }
@@ -162,9 +312,8 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
     try {
       // Combine user body with quoted content for final email
       let finalBody = values.body || '';
-      if (quotedContent && (mode === 'reply' || mode === 'forward')) {
-        // quotedContent is already HTML, just append it
-        finalBody += quotedContent;
+      if (quotedContent && (mode === 'reply' || mode === 'reply-all' || mode === 'forward')) {
+        finalBody += `${finalBody ? '\n\n' : ''}${quotedContent}`;
       }
 
       // Get attachment files
@@ -173,9 +322,9 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
         .map(f => f.originFileObj as File);
 
       await emailService.sendEmail(
-        toEmails,
-        ccEmails,
-        bccEmails,
+        finalTo,
+        finalCc,
+        finalBcc,
         values.subject,
         finalBody,
         originalEmail?.threadId,
@@ -232,7 +381,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
       originFileObj: file,
       status: 'done',
     };
-    
+
     setFileList((prev) => {
       // Ngăn chặn trùng lặp khi chọn 1 tệp nhiều lần
       if (prev.some((f) => f.name === file.name && f.size === file.size)) {
@@ -248,6 +397,8 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
     switch (mode) {
       case 'reply':
         return 'Reply';
+      case 'reply-all':
+        return 'Reply All';
       case 'forward':
         return 'Forward';
       default:
@@ -274,15 +425,15 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
         style={{ margin: 0 }}
       >
         {/* To Field */}
-        <div style={{ 
+        <div style={{
           padding: '12px 24px',
           borderBottom: '1px solid #f0f0f0',
           display: 'flex',
           alignItems: 'flex-start',
           minHeight: '48px'
         }}>
-          <Text style={{ 
-            width: '60px', 
+          <Text style={{
+            width: '60px',
             lineHeight: '32px',
             color: '#8c8c8c',
             fontSize: '14px'
@@ -308,29 +459,29 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
               onBlur={() => inputValue && handleAddEmail(inputValue, 'to')}
               placeholder={toEmails.length === 0 ? "Recipients" : ""}
               variant="borderless"
-              style={{ 
-                flex: 1, 
+              style={{
+                flex: 1,
                 minWidth: '200px',
                 padding: '4px 0'
               }}
             />
             <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
-              <Button 
-                type="link" 
-                size="small" 
+              <Button
+                type="link"
+                size="small"
                 onClick={() => setShowCc(!showCc)}
-                style={{ 
+                style={{
                   color: showCc ? '#1890ff' : '#8c8c8c',
                   fontWeight: showCc ? '600' : 'normal'
                 }}
               >
                 Cc
               </Button>
-              <Button 
-                type="link" 
-                size="small" 
+              <Button
+                type="link"
+                size="small"
                 onClick={() => setShowBcc(!showBcc)}
-                style={{ 
+                style={{
                   color: showBcc ? '#1890ff' : '#8c8c8c',
                   fontWeight: showBcc ? '600' : 'normal'
                 }}
@@ -343,90 +494,113 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
 
         {/* Cc Field */}
         {showCc && (
-          <div style={{ 
+          <div style={{
             padding: '12px 24px',
             borderBottom: '1px solid #f0f0f0',
             display: 'flex',
             alignItems: 'flex-start',
-            minHeight: '48px'
+            minHeight: '48px',
+            backgroundColor: mode === 'reply-all' ? '#fafafa' : 'transparent'
           }}>
-            <div style={{ 
-              width: '60px', 
+            <div style={{
+              width: mode === 'reply-all' ? '110px' : '60px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               marginRight: '8px'
             }}>
-              <Text style={{ 
+              <Text style={{
                 color: '#8c8c8c',
-                fontSize: '14px'
+                fontSize: '14px',
+                whiteSpace: 'nowrap'
               }}>
-                Cc
+                {mode === 'reply-all' ? 'Cc (locked)' : 'Cc'}
               </Text>
-              <Button 
-                type="text" 
-                size="small" 
-                icon={<DeleteOutlined style={{ fontSize: '12px', color: '#ff4d4f' }} />} 
-                onClick={() => setShowCc(false)}
-                style={{ padding: 0 }}
-                title="Hide Cc"
-              />
+              {mode !== 'reply-all' && (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<DeleteOutlined style={{ fontSize: '12px', color: '#ff4d4f' }} />}
+                  onClick={() => setShowCc(false)}
+                  style={{ padding: 0 }}
+                  title="Hide Cc"
+                />
+              )}
             </div>
             <div style={{ flex: 1, display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
-              {ccEmails.map(email => (
-                <Tag
-                  key={email}
-                  closable
-                  onClose={() => handleRemoveEmail(email, 'cc')}
-                  style={{ margin: 0 }}
-                >
-                  {email}
-                </Tag>
-              ))}
-              <Input
-                ref={ccInputRef}
-                value={ccInputValue}
-                onChange={(e) => setCcInputValue(e.target.value)}
-                onKeyDown={(e) => handleKeyDown(e, 'cc')}
-                onBlur={() => ccInputValue && handleAddEmail(ccInputValue, 'cc')}
-                placeholder="Cc recipients"
-                variant="borderless"
-                style={{ 
-                  flex: 1, 
-                  minWidth: '200px',
-                  padding: '4px 0'
-                }}
-              />
+              {mode === 'reply-all' ? (
+                ccEmails.length > 0 ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                    {ccEmails.map(email => (
+                      <Tag key={email} color="blue" style={{ margin: 0, cursor: 'default' }}>
+                        {email}
+                      </Tag>
+                    ))}
+                  </div>
+                ) : (
+                  <Text style={{ fontSize: '14px', color: '#8c8c8c' }}>
+                    No additional recipients
+                  </Text>
+                )
+              ) : (
+                // Editable mode: show as tags
+                <>
+                  {ccEmails.map(email => (
+                    <Tag
+                      key={email}
+                      closable
+                      onClose={() => handleRemoveEmail(email, 'cc')}
+                      style={{ margin: 0 }}
+                    >
+                      {email}
+                    </Tag>
+                  ))}
+                  <Input
+                    ref={ccInputRef}
+                    value={ccInputValue}
+                    onChange={(e) => setCcInputValue(e.target.value)}
+                    onKeyDown={(e) => handleKeyDown(e, 'cc')}
+                    onBlur={() => ccInputValue && handleAddEmail(ccInputValue, 'cc')}
+                    placeholder="Cc recipients"
+                    variant="borderless"
+                    style={{
+                      flex: 1,
+                      minWidth: '200px',
+                      padding: '4px 0'
+                    }}
+                  />
+                </>
+              )}
             </div>
           </div>
         )}
 
         {/* Bcc Field */}
         {showBcc && (
-          <div style={{ 
+          <div style={{
             padding: '12px 24px',
             borderBottom: '1px solid #f0f0f0',
             display: 'flex',
             alignItems: 'flex-start',
             minHeight: '48px'
           }}>
-            <div style={{ 
-              width: '60px', 
+            <div style={{
+              width: '60px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               marginRight: '8px'
             }}>
-              <Text style={{ 
+              <Text style={{
                 color: '#8c8c8c',
                 fontSize: '14px'
               }}>
                 Bcc
               </Text>
-              <Button 
-                type="text" 
-                size="small" 
-                icon={<DeleteOutlined style={{ fontSize: '12px', color: '#ff4d4f' }} />} 
+              <Button
+                type="text"
+                size="small"
+                icon={<DeleteOutlined style={{ fontSize: '12px', color: '#ff4d4f' }} />}
                 onClick={() => setShowBcc(false)}
                 style={{ padding: 0 }}
                 title="Hide Bcc"
@@ -451,8 +625,8 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
                 onBlur={() => bccInputValue && handleAddEmail(bccInputValue, 'bcc')}
                 placeholder="Bcc recipients"
                 variant="borderless"
-                style={{ 
-                  flex: 1, 
+                style={{
+                  flex: 1,
                   minWidth: '200px',
                   padding: '4px 0'
                 }}
@@ -462,7 +636,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
         )}
 
         {/* Subject */}
-        <div style={{ 
+        <div style={{
           padding: '12px 24px',
           borderBottom: '1px solid #f0f0f0',
         }}>
@@ -471,8 +645,8 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
             rules={[{ required: true, message: 'Please enter a subject' }]}
             style={{ margin: 0 }}
           >
-            <Input 
-              placeholder="Subject" 
+            <Input
+              placeholder="Subject"
               variant="borderless"
               style={{ padding: '4px 0' }}
             />
@@ -489,18 +663,18 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
               rows={8}
               placeholder="Write your message here..."
               variant="borderless"
-              style={{ 
+              style={{
                 padding: 0,
                 resize: 'none'
               }}
             />
           </Form.Item>
-          
+
           {/* Quoted Content Toggle (Gmail-style "...") */}
-          {quotedContent && (mode === 'reply' || mode === 'forward') && (
+          {quotedContent && (mode === 'reply' || mode === 'reply-all' || mode === 'forward') && (
             <div style={{ marginTop: '12px' }}>
-              <Button 
-                type="text" 
+              <Button
+                type="text"
                 size="small"
                 icon={<EllipsisOutlined />}
                 onClick={() => setShowQuotedContent(!showQuotedContent)}
@@ -516,28 +690,12 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
                 }}
                 title={showQuotedContent ? 'Hide quoted content' : 'Show quoted content'}
               />
-              
+
               {showQuotedContent && (
-                <div style={{ marginTop: '12px', border: '1px solid #e8e8e8', borderRadius: '4px' }}>
-                  <iframe
-                    srcDoc={quotedContent}
-                    title="Quoted Content"
-                    style={{
-                      width: '100%',
-                      minHeight: '200px',
-                      maxHeight: '400px',
-                      border: 'none',
-                      overflow: 'auto',
-                    }}
-                    sandbox="allow-same-origin"
-                    onLoad={(e) => {
-                      const iframe = e.target as HTMLIFrameElement;
-                      if (iframe.contentDocument) {
-                        const height = iframe.contentDocument.body.scrollHeight;
-                        iframe.style.height = `${Math.min(Math.max(height + 20, 200), 400)}px`;
-                      }
-                    }}
-                  />
+                <div style={{ marginTop: '12px', border: '1px solid #e8e8e8', borderRadius: '4px', padding: '12px', background: '#fafafa' }}>
+                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit', fontSize: '13px' }}>
+                    {quotedContent}
+                  </pre>
                 </div>
               )}
             </div>
@@ -546,7 +704,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
 
         {/* Attachments */}
         {fileList.length > 0 && (
-          <div style={{ 
+          <div style={{
             padding: '16px 24px',
             borderTop: '1px solid #f0f0f0',
             maxHeight: '200px',
@@ -606,7 +764,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
         )}
 
         {/* Footer */}
-        <div style={{ 
+        <div style={{
           padding: '12px 24px',
           borderTop: '1px solid #f0f0f0',
           display: 'flex',
@@ -615,9 +773,9 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
           background: '#fafafa'
         }}>
           <Space>
-            <Button 
-              type="primary" 
-              htmlType="submit" 
+            <Button
+              type="primary"
+              htmlType="submit"
               loading={loading}
               icon={<SendOutlined />}
             >
