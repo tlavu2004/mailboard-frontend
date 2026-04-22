@@ -187,12 +187,33 @@ export default function InboxPage() {
     setReplyToEmail(null);
   };
 
-  const handleComposeSend = () => {
+  const handleComposeSend = (sentPreview?: Email) => {
     setIsComposeVisible(false);
     setComposeMode('compose');
     setReplyToEmail(null);
+
+    // Optimistic Sent insertion: if user is viewing Sent mailbox we try to update UI without a full reload
     if (selectedMailbox === 'SENT') {
-      loadEmails('SENT');
+      // Always increment total emails so pagination stays consistent
+      setTotalEmails(prev => prev + 1);
+
+      if (sentPreview) {
+        if (currentPage === 1) {
+          setEmails(prev => {
+            const exists = prev.some(e => e.id === sentPreview.id);
+            if (exists) {
+              return prev.map(e => e.id === sentPreview.id ? sentPreview : e);
+            }
+            const next = [sentPreview, ...prev];
+            return next.slice(0, pageSize);
+          });
+        } else {
+          // If not on first page, avoid mutating the visible list — user likely wants to stay on the current page.
+          // We simply update totals and let background sync/notifications add the item when user navigates to page 1.
+        }
+      } else {
+        // No preview available: we still avoid forcing a full reload to keep UX stable.
+      }
     }
   };
 
@@ -637,7 +658,7 @@ export default function InboxPage() {
             // Fallback to full refresh
             setTimeout(() => {
               loadMailboxes();
-              loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
+              loadEmails(selectedMailbox, currentPage, pageSize, filters.unread, filters.hasAttachment);
             }, 500);
           }
         })();
@@ -646,11 +667,11 @@ export default function InboxPage() {
         message.info('New emails received! Syncing...');
         setTimeout(() => {
           loadMailboxes();
-          loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
+          loadEmails(selectedMailbox, currentPage, pageSize, filters.unread, filters.hasAttachment);
         }, 500);
       }
     }
-  }, [selectedMailbox, loadMailboxes, loadEmails, pageSize, filters]);
+  }, [selectedMailbox, loadMailboxes, loadEmails, currentPage, pageSize, filters]);
 
   useEmailNotifications(accountId, handleNotification);
 

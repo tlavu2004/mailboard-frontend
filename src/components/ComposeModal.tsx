@@ -11,6 +11,7 @@ import {
   EllipsisOutlined,
 } from '@ant-design/icons';
 import { emailService } from '@/services/email';
+import type { Email, Attachment } from '@/types/email';
 import type { UploadFile } from 'antd/es/upload/interface';
 import type { InputRef } from 'antd';
 
@@ -20,7 +21,7 @@ const { Text } = Typography;
 interface ComposeModalProps {
   visible: boolean;
   onCancel: () => void;
-  onSend: () => void;
+  onSend?: (sentPreview?: Email) => void;
   mode?: 'compose' | 'reply' | 'reply-all' | 'forward';
   currentUserEmail?: string;
   originalEmail?: {
@@ -321,7 +322,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
         .filter(f => f.originFileObj)
         .map(f => f.originFileObj as File);
 
-      await emailService.sendEmail(
+      const messageId = await emailService.sendEmail(
         finalTo,
         finalCc,
         finalBcc,
@@ -340,7 +341,41 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
       setShowBcc(false);
       setQuotedContent('');
       setShowQuotedContent(false);
-      onSend();
+      // Build an optimistic Sent preview to insert into Sent view without forcing a full reload.
+      try {
+        const nowIso = new Date().toISOString();
+        const tempId = messageId || `temp-${Date.now()}`;
+        const mapAddr = (addr: string) => ({ name: '', email: addr });
+        const sentPreview: Email = {
+          id: String(tempId),
+          messageId: messageId || undefined,
+          threadId: originalEmail?.threadId,
+          gmailMessageId: undefined,
+          gmailLink: undefined,
+          accountEmail: currentUserEmail || undefined,
+          mailboxId: 'SENT',
+          from: { name: '', email: currentUserEmail || '' },
+          to: finalTo.map(mapAddr),
+          cc: finalCc.map(mapAddr),
+          bcc: finalBcc.map(mapAddr),
+          subject: values.subject,
+          preview: (finalBody || '').slice(0, 160),
+          body: finalBody,
+          isRead: true,
+          isStarred: false,
+          hasAttachments: attachments.length > 0,
+          hasCloudLinks: false,
+          hasPhysicalAttachments: false,
+          attachments: attachments.map((f, i) => ({ id: `temp-${i}-${f.name}`, filename: f.name, size: f.size, mimeType: f.type, url: '' } as Attachment)),
+          receivedAt: nowIso,
+          createdAt: nowIso,
+        };
+
+        onSend?.(sentPreview);
+      } catch (err) {
+        // If anything goes wrong building preview, still call onSend without preview so parent can fallback
+        onSend?.();
+      }
     } catch (error) {
       message.error('Failed to send email');
       console.error(error);

@@ -9,17 +9,17 @@ export const emailService = {
       const mockData = await mockEmailApi.getMailboxes();
       return { mailboxes: mockData.mailboxes };
     }
-    
+
     const response = await apiClient.get<{ mailboxes: Mailbox[], accountId?: number }>('mailboxes');
     return response.data;
   },
 
   // Get emails for a specific mailbox
   getEmails: async (
-    mailboxId: string, 
-    page: number = 1, 
-    perPage: number = 20, 
-    unread?: boolean, 
+    mailboxId: string,
+    page: number = 1,
+    perPage: number = 20,
+    unread?: boolean,
     hasAttachments?: boolean,
     sortBy?: string,
     sortOrder?: string
@@ -27,10 +27,10 @@ export const emailService = {
     if (USE_MOCK_API) {
       return await mockEmailApi.getEmails(mailboxId, page, perPage) as unknown as EmailListResponse;
     }
-    
+
     const response = await apiClient.get<EmailListResponse>(`mailboxes/${mailboxId}/emails`, {
-      params: { 
-        page, 
+      params: {
+        page,
         perPage,
         unread: unread === undefined ? undefined : unread,
         hasAttachments: hasAttachments === undefined ? undefined : hasAttachments,
@@ -47,7 +47,7 @@ export const emailService = {
     if (USE_MOCK_API) {
       return await mockEmailApi.getEmailById(emailId) as unknown as Email;
     }
-    
+
     const response = await apiClient.get<Email>(`emails/${emailId}`, {
       params: { _t: Date.now() } // Cache busting (V10.27)
     });
@@ -62,27 +62,28 @@ export const emailService = {
       const filtered = all.emails.filter(e => e.subject.toLowerCase().includes(query.toLowerCase()));
       return { emails: filtered as unknown as Email[], nextPageToken: '', totalEstimate: filtered.length };
     }
-    const response = await apiClient.get<{ emails: Email[], nextPageToken: string, totalEstimate: number }>('emails/search', { 
-      params: { q: query, pageToken } 
+    const response = await apiClient.get<{ emails: Email[], nextPageToken: string, totalEstimate: number }>('emails/search', {
+      params: { q: query, pageToken }
     });
     return response.data;
   },
 
   // Send email with optional attachments
+  // Returns server messageId when available so caller can perform optimistic UI updates
   sendEmail: async (
-    to: string[], 
-    cc: string[], 
-    bcc: string[], 
-    subject: string, 
+    to: string[],
+    cc: string[],
+    bcc: string[],
+    subject: string,
     body: string,
     threadId?: string,
     attachments?: File[]
-  ): Promise<void> => {
+  ): Promise<string | void> => {
     if (USE_MOCK_API) {
       // Mock implementation
       return;
     }
-    
+
     // If there are attachments, use FormData
     if (attachments && attachments.length > 0) {
       const formData = new FormData();
@@ -94,27 +95,29 @@ export const emailService = {
       if (threadId) {
         formData.append('threadId', threadId);
       }
-      
+
       // Add each file
       attachments.forEach((file) => {
         formData.append('attachments', file);
       });
-      
-      await apiClient.post('emails/send', formData, {
+
+      const response = await apiClient.post<string>('emails/send', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
+      return response.data;
     } else {
       // No attachments, use JSON
-      await apiClient.post('emails/send', { 
-        to, 
-        cc, 
-        bcc, 
-        subject, 
+      const response = await apiClient.post<string>('emails/send', {
+        to,
+        cc,
+        bcc,
+        subject,
         body,
         threadId
       });
+      return response.data;
     }
   },
 
