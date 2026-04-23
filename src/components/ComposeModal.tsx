@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Modal, Form, Input, Button, message, Upload, Space, Tag, Typography, Image } from 'antd';
+import { Modal, Form, Input, Button, message, Upload, Space, Tag, Typography, Image, Alert } from 'antd';
 import {
   PaperClipOutlined,
   SendOutlined,
@@ -243,6 +243,22 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
     }
   }, [visible, mode, originalEmail, form, currentUserEmail]);
 
+
+
+  useEffect(() => {
+    console.log('[ComposeModal] visible change', { visible, mode, originalEmailId: (originalEmail as any)?.id });
+  }, [visible, mode, (originalEmail as any)?.id]);
+
+  const isNoReplySender = (() => {
+    try {
+      if (!originalEmail || !originalEmail.from) return false;
+      const addr = typeof originalEmail.from === 'string' ? originalEmail.from : (originalEmail.from.email || '');
+      return /no[-_]?reply/i.test(addr);
+    } catch (e) {
+      return false;
+    }
+  })();
+
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
@@ -325,13 +341,16 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
         .filter(f => f.originFileObj)
         .map(f => f.originFileObj as File);
 
+      // Pass the original message's Message-ID as the in-reply-to value when available.
+      // Fallback to threadId if messageId is not present.
+      const inReplyTo = (originalEmail as any)?.messageId || originalEmail?.threadId;
       const messageId = await emailService.sendEmail(
         finalTo,
         finalCc,
         finalBcc,
         values.subject,
         finalBody,
-        originalEmail?.threadId,
+        inReplyTo,
         attachments.length > 0 ? attachments : undefined
       );
       message.success('Email sent successfully');
@@ -462,6 +481,28 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
         onFinish={handleSend}
         style={{ margin: 0 }}
       >
+        {/* Top banners: show persistent warning for reply to no-reply sender, and info when reply-all removed recipients */}
+        {mode === 'reply' && isNoReplySender && (
+          <div style={{ padding: '12px 24px' }}>
+            <Alert
+              message="This address usually doesn't accept replies. Your message may not be delivered."
+              type="warning"
+              showIcon
+              style={{ marginBottom: 8 }}
+            />
+          </div>
+        )}
+
+        {mode === 'reply-all' && removedNoReply && removedNoReply.length > 0 && (
+          <div style={{ padding: '12px 24px' }}>
+            <Alert
+              message={`No-reply addresses were removed: ${removedNoReply.join(', ')}`}
+              type="info"
+              showIcon
+              style={{ marginBottom: 8 }}
+            />
+          </div>
+        )}
         {/* To Field */}
         <div style={{
           padding: '12px 24px',
@@ -538,10 +579,10 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
             display: 'flex',
             alignItems: 'flex-start',
             minHeight: '48px',
-            backgroundColor: mode === 'reply-all' ? '#fafafa' : 'transparent'
+            backgroundColor: 'transparent'
           }}>
             <div style={{
-              width: mode === 'reply-all' ? '110px' : '60px',
+              width: '60px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -552,76 +593,55 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
                 fontSize: '14px',
                 whiteSpace: 'nowrap'
               }}>
-                {mode === 'reply-all' ? 'Cc (locked)' : 'Cc'}
+                Cc
               </Text>
-              {mode !== 'reply-all' && (
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<DeleteOutlined style={{ fontSize: '12px', color: '#ff4d4f' }} />}
-                  onClick={() => setShowCc(false)}
-                  style={{ padding: 0 }}
-                  title="Hide Cc"
-                />
-              )}
+              <Button
+                type="text"
+                size="small"
+                icon={<DeleteOutlined style={{ fontSize: '12px', color: '#ff4d4f' }} />}
+                onClick={() => setShowCc(false)}
+                style={{ padding: 0 }}
+                title="Hide Cc"
+              />
             </div>
             <div style={{ flex: 1, display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
-              {mode === 'reply-all' ? (
-                ccEmails.length > 0 ? (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-                    {ccEmails.map(email => (
-                      <Tag key={email} color="blue" style={{ margin: 0, cursor: 'default' }}>
-                        {email}
-                      </Tag>
-                    ))}
-                    {/* If we removed no-reply recipients, show them with an option to include back */}
-                    {removedNoReply && removedNoReply.length > 0 && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 8 }}>
-                        {removedNoReply.map(addr => (
-                          <div key={addr} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <Tag color="orange" style={{ margin: 0 }}>{addr}</Tag>
-                            <Button type="link" size="small" onClick={() => {
-                              if (!ccEmails.includes(addr)) setCcEmails(prev => [...prev, addr]);
-                              setRemovedNoReply(prev => prev.filter(a => a !== addr));
-                            }}>Include</Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <Text style={{ fontSize: '14px', color: '#8c8c8c' }}>
-                    No additional recipients
-                  </Text>
-                )
-              ) : (
-                // Editable mode: show as tags
-                <>
-                  {ccEmails.map(email => (
-                    <Tag
-                      key={email}
-                      closable
-                      onClose={() => handleRemoveEmail(email, 'cc')}
-                      style={{ margin: 0 }}
-                    >
-                      {email}
-                    </Tag>
+              {/* Editable CC: show tags + input, plus removedNoReply pills with Include */}
+              {ccEmails.map(email => (
+                <Tag
+                  key={email}
+                  closable
+                  onClose={() => handleRemoveEmail(email, 'cc')}
+                  style={{ margin: 0 }}
+                >
+                  {email}
+                </Tag>
+              ))}
+              <Input
+                ref={ccInputRef}
+                value={ccInputValue}
+                onChange={(e) => setCcInputValue(e.target.value)}
+                onKeyDown={(e) => handleKeyDown(e, 'cc')}
+                onBlur={() => ccInputValue && handleAddEmail(ccInputValue, 'cc')}
+                placeholder="Cc recipients"
+                variant="borderless"
+                style={{
+                  flex: 1,
+                  minWidth: '200px',
+                  padding: '4px 0'
+                }}
+              />
+              {removedNoReply && removedNoReply.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 8 }}>
+                  {removedNoReply.map(addr => (
+                    <div key={addr} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Tag color="orange" style={{ margin: 0 }}>{addr}</Tag>
+                      <Button type="link" size="small" onClick={() => {
+                        if (!ccEmails.includes(addr)) setCcEmails(prev => [...prev, addr]);
+                        setRemovedNoReply(prev => prev.filter(a => a !== addr));
+                      }}>Include</Button>
+                    </div>
                   ))}
-                  <Input
-                    ref={ccInputRef}
-                    value={ccInputValue}
-                    onChange={(e) => setCcInputValue(e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(e, 'cc')}
-                    onBlur={() => ccInputValue && handleAddEmail(ccInputValue, 'cc')}
-                    placeholder="Cc recipients"
-                    variant="borderless"
-                    style={{
-                      flex: 1,
-                      minWidth: '200px',
-                      padding: '4px 0'
-                    }}
-                  />
-                </>
+                </div>
               )}
             </div>
           </div>

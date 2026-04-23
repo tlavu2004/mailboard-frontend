@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { Layout, Menu, List, Card, Button, Badge, Typography, Space, Avatar, Spin, message, Empty, Modal, Pagination, Dropdown, Drawer, notification, Alert } from 'antd';
 import EmailDetail from '@/app/components/EmailDetail';
 import InlineAlertContext from '@/contexts/InlineAlertContext';
@@ -74,6 +75,7 @@ export default function InboxPage() {
   const [showMobileDetail, setShowMobileDetail] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [isComposeVisible, setIsComposeVisible] = useState(false);
+  const isOpeningRef = useRef(false);
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
   const [composeMode, setComposeMode] = useState<'compose' | 'reply' | 'reply-all' | 'forward'>('compose');
   const [replyToEmail, setReplyToEmail] = useState<Email | null>(null);
@@ -245,81 +247,111 @@ export default function InboxPage() {
 
   const handleReply = (email: Email) => {
     console.log('[InboxPage] handleReply invoked', email?.id, email?.from);
+    if (isOpeningRef.current) return;
+
     const senderEmail = email.from?.email || '';
-    const localPart = senderEmail.split('@')[0]?.toLowerCase() || '';
-    const isNoReplySender = /(?:^|[._-])(noreply|no-reply|donotreply|do-not-reply)(?:$|[._-])/.test(localPart);
-    const id = email.id ? String(email.id) : `${senderEmail}:${email.threadId || ''}`;
-    if (isNoReplySender) {
-      Modal.confirm({
-        title: 'Sender may not accept replies',
-        content: `"${senderEmail}" looks like a no-reply address. You can still try replying.`,
-        okText: 'Reply anyway',
-        cancelText: 'Cancel',
-        zIndex: 10000,
-        getContainer: () => document.body,
-        onOk: () => {
+    const isNoReplySender = /no[-_]?reply/i.test(senderEmail);
+
+    const openCompose = () => {
+      console.log('[InboxPage] openCompose start', { mode: 'reply', isOpeningRef: isOpeningRef.current });
+      isOpeningRef.current = true;
+      try {
+        flushSync(() => {
           setReplyToEmail(email);
           setComposeMode('reply');
-          setIsComposeVisible(true);
-        },
+          console.log('[InboxPage] flushSync applied reply prefill', { emailId: email?.id });
+        });
+        setIsComposeVisible(true);
+        console.log('[InboxPage] setIsComposeVisible(true) called for reply');
+      } finally {
+        setTimeout(() => { isOpeningRef.current = false; console.log('[InboxPage] isOpeningRef reset after reply'); }, 50);
+      }
+    };
+
+    if (isNoReplySender) {
+      // Non-blocking warning: open compose immediately and show a soft notification
+      openCompose();
+      notification.warning({
+        message: 'Reply may not be delivered',
+        description: `${senderEmail} looks like a no-reply address. Your message may not be delivered.`,
+        placement: 'topRight',
+        duration: 6,
       });
       return;
     }
 
-    setReplyToEmail(email);
-    setComposeMode('reply');
-    setIsComposeVisible(true);
+    openCompose();
   };
 
   const handleReplyAll = (email: Email) => {
     console.log('[InboxPage] handleReplyAll invoked', email?.id, email?.from);
-    const senderEmail = email.from?.email || '';
-    const localPart = senderEmail.split('@')[0]?.toLowerCase() || '';
-    const isNoReplySender = /(?:^|[._-])(noreply|no-reply|donotreply|do-not-reply)(?:$|[._-])/.test(localPart);
-    const id = email.id ? String(email.id) : `${senderEmail}:${email.threadId || ''}`;
-    if (isNoReplySender) {
-      // Build filtered originalEmail: remove no-reply addresses from cc for reply-all
-      const extractAddr = (r: any) => {
-        if (!r) return '';
-        if (typeof r === 'string') {
-          const m = r.match(/<([^>]+)>/);
-          return (m ? m[1] : r).trim();
-        }
-        return (r.email || '').trim();
-      };
-      const normalizeList = (lst: any) => (Array.isArray(lst) ? lst.map(extractAddr).filter(Boolean) : []);
-      const originalCc = normalizeList(email.cc || []);
-      const noReplyRx = /(?:^|[._-])(noreply|no-reply|donotreply|do-not-reply)(?:$|[._-])/i;
-      const removed = originalCc.filter(a => noReplyRx.test((a.split('@')[0] || '').toLowerCase()));
-      const filteredCc = originalCc.filter(a => !removed.includes(a));
+    if (isOpeningRef.current) return;
 
-      const modified = { ...email, cc: filteredCc, removedNoReply: removed } as any;
+    const extractAddr = (r: any) => {
+      if (!r) return '';
+      if (typeof r === 'string') {
+        const m = r.match(/<([^>]+)>/);
+        return (m ? m[1] : r).trim();
+      }
+      return (r.email || '').trim();
+    };
+    const normalizeList = (lst: any) => (Array.isArray(lst) ? lst.map(extractAddr).filter(Boolean) : []);
 
-      Modal.confirm({
-        title: 'Sender may not accept replies',
-        content: `"${senderEmail}" looks like a no-reply address. You can still try Reply All.`,
-        okText: 'Reply all anyway',
-        cancelText: 'Cancel',
-        zIndex: 10000,
-        getContainer: () => document.body,
-        onOk: () => {
-          setReplyToEmail(modified);
+    const originalTo = normalizeList(email.to || []);
+    const originalCc = normalizeList(email.cc || []);
+
+    const noReplyRx = /no[-_]?reply/i;
+
+    // Remove no-reply addresses from both to and cc
+    const removedFromTo = originalTo.filter(a => noReplyRx.test(a));
+    const removedFromCc = originalCc.filter(a => noReplyRx.test(a));
+    const removed = Array.from(new Set([...removedFromTo, ...removedFromCc]));
+
+    const filteredTo = originalTo.filter(a => !removed.includes(a));
+    const filteredCc = originalCc.filter(a => !removed.includes(a));
+
+    const modified: any = { ...email, to: filteredTo, cc: filteredCc, removedNoReply: removed };
+
+    const openCompose = () => {
+      console.log('[InboxPage] openCompose start', { mode: 'reply-all', isOpeningRef: isOpeningRef.current, removed });
+      isOpeningRef.current = true;
+      try {
+        flushSync(() => {
+          setReplyToEmail(modified as Email);
           setComposeMode('reply-all');
-          setIsComposeVisible(true);
-        },
-      });
-      return;
-    }
+          console.log('[InboxPage] flushSync applied reply-all prefill', { emailId: modified?.id, removed });
+        });
+        setIsComposeVisible(true);
+        console.log('[InboxPage] setIsComposeVisible(true) called for reply-all');
+      } finally {
+        setTimeout(() => { isOpeningRef.current = false; console.log('[InboxPage] isOpeningRef reset after reply-all'); }, 50);
+      }
+    };
 
-    setReplyToEmail(email);
-    setComposeMode('reply-all');
-    setIsComposeVisible(true);
+    // Non-blocking: open compose immediately and notify about removed no-reply recipients
+    openCompose();
+    if (removed.length > 0) {
+      notification.info({
+        message: 'Reply All — removed no-reply recipients',
+        description: `No-reply addresses (${removed.join(', ')}) were removed from recipients.`,
+        placement: 'topRight',
+        duration: 6,
+      });
+    }
   };
 
   const handleForward = (email: Email) => {
-    setReplyToEmail(email);
-    setComposeMode('forward');
-    setIsComposeVisible(true);
+    if (isOpeningRef.current) return;
+    isOpeningRef.current = true;
+    try {
+      flushSync(() => {
+        setReplyToEmail(email);
+        setComposeMode('forward');
+      });
+      setIsComposeVisible(true);
+    } finally {
+      setTimeout(() => { isOpeningRef.current = false; console.log('[InboxPage] isOpeningRef reset after forward'); }, 50);
+    }
   };
 
   const loadMailboxes = useCallback(async (): Promise<string | null> => {
