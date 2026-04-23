@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Layout, Menu, List, Card, Button, Badge, Typography, Space, Avatar, Spin, message, Empty, Modal, Pagination, Dropdown, Drawer } from 'antd';
+import { Layout, Menu, List, Card, Button, Badge, Typography, Space, Avatar, Spin, message, Empty, Modal, Pagination, Dropdown, Drawer, notification, Alert } from 'antd';
 import EmailDetail from '@/app/components/EmailDetail';
+import InlineAlertContext from '@/contexts/InlineAlertContext';
 import ComposeModal from '@/components/ComposeModal';
 import {
   InboxOutlined,
@@ -87,6 +88,31 @@ export default function InboxPage() {
   const [isResizing, setIsResizing] = useState(false);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+
+  const [inlineAlert, setInlineAlert] = useState<{ emailId: string; message: string } | null>(null);
+
+  // Show inline no-reply banner whenever an email is opened. Avoid duplicate rendering
+  // by checking the current `inlineAlert` (if it's already showing for the same
+  // email we don't re-create it). We intentionally do NOT persist dismissals so
+  // the banner will reappear each time the user opens the email.
+  useEffect(() => {
+    if (!selectedEmail) {
+      setInlineAlert(null);
+      return;
+    }
+    const senderEmail = (typeof selectedEmail.from === 'string') ? selectedEmail.from : (selectedEmail.from?.email || '');
+    const localPart = String(senderEmail).split('@')[0]?.toLowerCase() || '';
+    const isNoReplySender = /(?:^|[._-])(noreply|no-reply|donotreply|do-not-reply)(?:$|[._-])/.test(localPart);
+    const id = selectedEmail.id ? String(selectedEmail.id) : `${senderEmail}:${selectedEmail.threadId || ''}`;
+    if (isNoReplySender) {
+      if (!inlineAlert || inlineAlert.emailId !== id) {
+        setInlineAlert({ emailId: id, message: `${senderEmail} looks like a no-reply address. You can still try replying.` });
+      }
+    } else {
+      setInlineAlert(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEmail]);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -218,16 +244,19 @@ export default function InboxPage() {
   };
 
   const handleReply = (email: Email) => {
+    console.log('[InboxPage] handleReply invoked', email?.id, email?.from);
     const senderEmail = email.from?.email || '';
     const localPart = senderEmail.split('@')[0]?.toLowerCase() || '';
     const isNoReplySender = /(?:^|[._-])(noreply|no-reply|donotreply|do-not-reply)(?:$|[._-])/.test(localPart);
-
+    const id = email.id ? String(email.id) : `${senderEmail}:${email.threadId || ''}`;
     if (isNoReplySender) {
       Modal.confirm({
         title: 'Sender may not accept replies',
         content: `"${senderEmail}" looks like a no-reply address. You can still try replying.`,
         okText: 'Reply anyway',
         cancelText: 'Cancel',
+        zIndex: 10000,
+        getContainer: () => document.body,
         onOk: () => {
           setReplyToEmail(email);
           setComposeMode('reply');
@@ -243,18 +272,38 @@ export default function InboxPage() {
   };
 
   const handleReplyAll = (email: Email) => {
+    console.log('[InboxPage] handleReplyAll invoked', email?.id, email?.from);
     const senderEmail = email.from?.email || '';
     const localPart = senderEmail.split('@')[0]?.toLowerCase() || '';
     const isNoReplySender = /(?:^|[._-])(noreply|no-reply|donotreply|do-not-reply)(?:$|[._-])/.test(localPart);
-
+    const id = email.id ? String(email.id) : `${senderEmail}:${email.threadId || ''}`;
     if (isNoReplySender) {
+      // Build filtered originalEmail: remove no-reply addresses from cc for reply-all
+      const extractAddr = (r: any) => {
+        if (!r) return '';
+        if (typeof r === 'string') {
+          const m = r.match(/<([^>]+)>/);
+          return (m ? m[1] : r).trim();
+        }
+        return (r.email || '').trim();
+      };
+      const normalizeList = (lst: any) => (Array.isArray(lst) ? lst.map(extractAddr).filter(Boolean) : []);
+      const originalCc = normalizeList(email.cc || []);
+      const noReplyRx = /(?:^|[._-])(noreply|no-reply|donotreply|do-not-reply)(?:$|[._-])/i;
+      const removed = originalCc.filter(a => noReplyRx.test((a.split('@')[0] || '').toLowerCase()));
+      const filteredCc = originalCc.filter(a => !removed.includes(a));
+
+      const modified = { ...email, cc: filteredCc, removedNoReply: removed } as any;
+
       Modal.confirm({
         title: 'Sender may not accept replies',
         content: `"${senderEmail}" looks like a no-reply address. You can still try Reply All.`,
         okText: 'Reply all anyway',
         cancelText: 'Cancel',
+        zIndex: 10000,
+        getContainer: () => document.body,
         onOk: () => {
-          setReplyToEmail(email);
+          setReplyToEmail(modified);
           setComposeMode('reply-all');
           setIsComposeVisible(true);
         },
@@ -1030,69 +1079,366 @@ export default function InboxPage() {
 
   return (
     <ProtectedRoute>
-      <Layout style={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        {/* TOP TOOLBAR - Minimalist & Stable */}
-        <Header className="top-toolbar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }} onClick={() => handleMailboxSelect('INBOX')}>
-              <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg shadow-sm text-white" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
-                  <path d="M20 3v4" /><path d="M22 5h-4" /><path d="M4 17v2" /><path d="M5 18H3" />
-                </svg>
+      <InlineAlertContext.Provider value={{
+        inlineAlert, setInlineAlert, isVisibleForEmail: (emailId?: string) => {
+          if (!inlineAlert) return false;
+          if (!emailId) return true;
+          return String(inlineAlert.emailId) === String(emailId);
+        }
+      }}>
+        <Layout style={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          {/* TOP TOOLBAR - Minimalist & Stable */}
+          <Header className="top-toolbar">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }} onClick={() => handleMailboxSelect('INBOX')}>
+                <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg shadow-sm text-white" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+                    <path d="M20 3v4" /><path d="M22 5h-4" /><path d="M4 17v2" /><path d="M5 18H3" />
+                  </svg>
+                </div>
+                <Title level={4} style={{ margin: 0, color: '#1a1a1a', letterSpacing: '-0.5px', fontWeight: 700 }}>MailBoard</Title>
               </div>
-              <Title level={4} style={{ margin: 0, color: '#1a1a1a', letterSpacing: '-0.5px', fontWeight: 700 }}>MailBoard</Title>
             </div>
-          </div>
 
-          <div style={{ flex: 1, maxWidth: '600px', margin: '0 24px' }}>
-            {/* Search Bar Refactored for Stability */}
-            <SearchInput
-              onSearch={handleSearch}
-              defaultValue={searchQuery}
-              ref={searchInputRef}
+            <div style={{ flex: 1, maxWidth: '600px', margin: '0 24px' }}>
+              {/* Search Bar Refactored for Stability */}
+              <SearchInput
+                onSearch={handleSearch}
+                defaultValue={searchQuery}
+                ref={searchInputRef}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="flex bg-gray-100 p-1 rounded-lg mr-2">
+                <button
+                  onClick={() => handleViewToggle('list')}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium border-0 cursor-pointer transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}
+                >
+                  <BarsOutlined /> <span>List</span>
+                </button>
+                <button
+                  onClick={() => handleViewToggle('kanban')}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium border-0 cursor-pointer transition-all ${viewMode === 'kanban' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}
+                >
+                  <AppstoreOutlined /> <span>Kanban</span>
+                </button>
+              </div>
+              {/* Sync button removed as it is now in FilterBar */}
+            </div>
+          </Header>
+
+
+          <Layout className="main-layout" style={{ flex: 1, overflow: 'hidden' }}>
+            {/* GLOBAL LEFT SIDEBAR - Unified for all views */}
+            <Sider
+              width={sidebarWidth}
+              theme="light"
+              breakpoint="lg"
+              collapsedWidth="0"
+              className="mailbox-sider hidden-mobile"
+              trigger={null}
+              style={{
+                transition: isResizingSidebar ? 'none' : 'width 0.2s ease',
+                flex: '0 0 auto'
+              }}
+            >
+              <div className="sidebar-container">
+                {/* Branding removed: now in top header */}
+                <div style={{ height: '16px' }} />
+
+                {/* Sidebar Content: Compose & Mailboxes */}
+                <div className="sidebar-content">
+                  <div style={{ padding: '0 8px 16px 8px' }}>
+                    <Button
+                      type="primary"
+                      icon={<EditOutlined />}
+                      block
+                      size="large"
+                      onClick={() => setIsComposeVisible(true)}
+                      style={{ borderRadius: '12px', height: '48px', boxShadow: '0 4px 12px rgba(102, 126, 234, 0.25)' }}
+                    >
+                      Compose
+                    </Button>
+                  </div>
+                  <Menu
+                    mode="inline"
+                    selectedKeys={[selectedMailbox]}
+                    style={{ border: 'none' }}
+                    items={mailboxes.map((mailbox) => ({
+                      key: mailbox.id,
+                      icon: iconMap[mailbox.icon] || <FolderOutlined />,
+                      onClick: () => handleMailboxSelect(mailbox.id),
+                      label: (
+                        <div className="flex justify-between items-center w-full">
+                          <span>{mailbox.name}</span>
+                          {mailbox.unreadCount > 0 && (
+                            <Badge count={mailbox.unreadCount} style={{ backgroundColor: '#667eea', boxShadow: 'none' }} />
+                          )}
+                        </div>
+                      ),
+                    }))}
+                  />
+                </div>
+
+                {/* Sidebar Footer: User Profile */}
+                <div className="sidebar-footer">
+                  <div className="flex items-center justify-between p-2 rounded-xl border border-gray-100 bg-white">
+                    <div className="flex items-center gap-3">
+                      <Avatar style={{ backgroundColor: '#667eea' }}>
+                        {user?.name?.charAt(0)?.toUpperCase()}
+                      </Avatar>
+                      <div className="flex flex-col">
+                        <Text strong style={{ fontSize: '13px', lineHeight: 1.2 }}>{user?.name}</Text>
+                        <Text type="secondary" style={{ fontSize: '11px' }}>{user?.email?.split('@')[0]}</Text>
+                      </div>
+                    </div>
+                    <Dropdown
+                      menu={{
+                        items: [
+                          { key: 'stats', icon: <PieChartOutlined />, label: 'Statistics', onClick: () => window.location.href = '/statistics' },
+                          { type: 'divider' },
+                          { key: 'logout', icon: <LogoutOutlined />, label: 'Logout', danger: true, onClick: logout }
+                        ]
+                      }}
+                      trigger={['click']}
+                    >
+                      <Button type="text" icon={<ExportOutlined style={{ color: '#8c8c8c' }} />} />
+                    </Dropdown>
+                  </div>
+                </div>
+              </div>
+            </Sider>
+
+            {/* Sidebar Resize Handle */}
+            <div
+              className={`resize-handle hidden-mobile ${isResizingSidebar ? 'active' : ''}`}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsResizingSidebar(true);
+              }}
             />
-          </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div className="flex bg-gray-100 p-1 rounded-lg mr-2">
-              <button
-                onClick={() => handleViewToggle('list')}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium border-0 cursor-pointer transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}
-              >
-                <BarsOutlined /> <span>List</span>
-              </button>
-              <button
-                onClick={() => handleViewToggle('kanban')}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium border-0 cursor-pointer transition-all ${viewMode === 'kanban' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}
-              >
-                <AppstoreOutlined /> <span>Kanban</span>
-              </button>
-            </div>
-            {/* Sync button removed as it is now in FilterBar */}
-          </div>
-        </Header>
+            <Layout style={{ flex: 1, overflow: 'hidden', background: '#f8fafc' }}>
+              <div className="px-6 py-2">
+                <FilterBar
+                  filters={filters}
+                  sortMode={sortMode}
+                  onFilterChange={setFilters}
+                  onSortChange={setSortMode}
+                  onSync={handleSync}
+                  onRefresh={handleRefresh}
+                  onSettings={viewMode === 'kanban' ? () => setKanbanSettingsOpen(true) : undefined}
+                  syncLoading={syncLoading}
+                  refreshLoading={emailsLoading}
+                />
+              </div>
 
+              <Content style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                {isSearching ? (
+                  <div className="flex-1 overflow-hidden">
+                    <SearchResults
+                      results={searchResults}
+                      loading={searchLoading}
+                      onSelect={handleEmailSelect}
+                      onClose={handleClearSearch}
+                      searchQuery={searchQuery}
+                      onLoadMore={handleLoadMoreSearch}
+                      loadingMore={loadingMore}
+                      hasMore={!!nextPageToken}
+                      totalEstimate={totalEstimate}
+                      scores={searchScores}
+                      searchMode={searchMode}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex h-full w-full overflow-hidden relative">
+                    {/* Left Column: List or Kanban */}
+                    <div
+                      className={`flex flex-col bg-white border-r border-gray-100 ${showMobileDetail ? (viewMode === 'list' ? 'hidden-mobile' : 'hidden') : 'flex w-full'}`}
+                      style={{
+                        width: viewMode === 'list' ? (selectedEmail ? `${listWidth}px` : '100%') : '100%',
+                        transition: isResizing ? 'none' : 'width 0.3s ease'
+                      }}
+                    >
+                      {viewMode === 'list' ? (
+                        <>
+                          <div className="p-2 border-b border-gray-100" style={{ paddingLeft: '24px' }}>
+                            <Title level={5} style={{ margin: 0 }}>
+                              {mailboxes.find(m => m.id === selectedMailbox)?.name || 'Inbox'}
+                            </Title>
+                          </div>
+                          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-2 inbox-list-scroll" style={{ paddingLeft: '24px', paddingRight: '12px' }}>
+                            {emailsLoading ? <div className="p-12 text-center"><Spin /></div> : (
+                              <>
+                                <List
+                                  dataSource={emails}
+                                  renderItem={(email, index) => (
+                                    <div id={`email-item-${email.id}`} key={email.id}>
+                                      <Card
+                                        hoverable
+                                        className={`mail-item-card cursor-pointer transition-all ${selectedEmail?.id === email.id ? 'email-card-selected' : ''}`}
+                                        styles={{ body: { padding: '12px' } }}
+                                        onClick={() => {
+                                          setActiveIndex(index);
+                                          handleEmailSelect(email);
+                                        }}
+                                      >
+                                        <div className="flex items-start gap-3">
+                                          {/* Left: Avatar */}
+                                          <Avatar
+                                            className="flex-shrink-0"
+                                            style={{ backgroundColor: email.isRead ? '#f1f5f9' : '#e0e7ff', color: email.isRead ? '#64748b' : '#4f46e5', fontWeight: 600 }}
+                                          >
+                                            {email.from.name ? email.from.name.charAt(0).toUpperCase() : '?'}
+                                          </Avatar>
 
-        <Layout className="main-layout" style={{ flex: 1, overflow: 'hidden' }}>
-          {/* GLOBAL LEFT SIDEBAR - Unified for all views */}
-          <Sider
-            width={sidebarWidth}
-            theme="light"
-            breakpoint="lg"
-            collapsedWidth="0"
-            className="mailbox-sider hidden-mobile"
-            trigger={null}
-            style={{
-              transition: isResizingSidebar ? 'none' : 'width 0.2s ease',
-              flex: '0 0 auto'
-            }}
+                                          {/* Middle: Content */}
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex justify-between items-start mb-0.5">
+                                              <div className="flex items-center gap-2 min-w-0">
+                                                {!email.isRead && <div className="unread-dot flex-shrink-0" />}
+                                                <Text strong={!email.isRead} className="mail-item-sender truncate">
+                                                  {email.from.name}
+                                                </Text>
+                                                <div className="flex items-center gap-1 flex-shrink-0">
+                                                  {email.hasPhysicalAttachments && (
+                                                    <PaperClipOutlined style={{ fontSize: '11px', color: '#94a3b8' }} />
+                                                  )}
+                                                  {email.hasCloudLinks && (
+                                                    <CloudOutlined style={{ fontSize: '11px', color: '#3b82f6' }} />
+                                                  )}
+                                                </div>
+                                              </div>
+
+                                              <div className="flex items-center gap-2 flex-shrink-0">
+                                                <div
+                                                  onClick={(e) => handleStar(e, email)}
+                                                  className="cursor-pointer hover:scale-125 transition-transform duration-200"
+                                                >
+                                                  {email.isStarred ? (
+                                                    <StarFilled style={{ color: '#f59e0b', fontSize: '15px' }} />
+                                                  ) : (
+                                                    <StarOutlined style={{ color: '#cbd5e1', fontSize: '15px' }} />
+                                                  )}
+                                                </div>
+                                                <Text type="secondary" style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>
+                                                  {formatDate(email.receivedAt)}
+                                                </Text>
+                                              </div>
+                                            </div>
+
+                                            <Text strong={!email.isRead} className="mail-item-subject block truncate">
+                                              {email.subject}
+                                            </Text>
+                                            <Text className="mail-item-preview block truncate" style={{ marginTop: '2px' }}>
+                                              {email.preview}
+                                            </Text>
+                                          </div>
+                                        </div>
+                                      </Card>
+                                    </div>
+                                  )}
+                                />
+                              </>
+                            )}
+                          </div>
+
+                          {/* Footer pagination: placed outside the scroll area so it stays pinned to bottom of left column */}
+                          <div className="inbox-pagination-footer">
+                            <div className="inbox-pagination-info">
+                              {totalEmails > 0 ? `${Math.min(((currentPage - 1) * pageSize) + 1, totalEmails)}-${Math.min(currentPage * pageSize, totalEmails)} of ${totalEmails} emails` : 'No emails'}
+                            </div>
+                            <div className="inbox-pagination-controls compact-pagination">
+                              <Pagination
+                                simple
+                                size="small"
+                                current={currentPage}
+                                total={totalEmails}
+                                pageSize={pageSize}
+                                onChange={handlePageChange}
+                                showSizeChanger
+                                pageSizeOptions={["10", "20", "50", "100"]}
+                              />
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <KanbanBoard
+                          onCardClick={handleKanbanCardClick}
+                          filters={filters}
+                          sortMode={sortMode}
+                          accountId={accountId}
+                          settingsOpen={kanbanSettingsOpen}
+                          onSettingsClose={() => {
+                            setKanbanSettingsOpen(false);
+                            setTriggerAddColumn(false);
+                          }}
+                          onAddColumnClick={() => {
+                            setTriggerAddColumn(true);
+                            setKanbanSettingsOpen(true);
+                          }}
+                          triggerAddOnOpen={triggerAddColumn}
+                        />
+                      )}
+                    </div>
+
+                    {/* Resizer Handle */}
+                    {viewMode === 'list' && selectedEmail && (
+                      <div
+                        className={`resize-handle hidden-mobile ${isResizing ? 'active' : ''}`}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setIsResizing(true);
+                        }}
+                      />
+                    )}
+
+                    {/* Right Column: Detail (List View only) */}
+                    {selectedEmail && viewMode === 'list' && (
+                      <div className={`flex-1 bg-white overflow-y-auto ${!showMobileDetail ? 'hidden-mobile flex' : 'absolute inset-0 z-50 flex md:relative md:flex'}`}>
+                        <EmailDetail
+                          email={selectedEmail}
+                          onBack={() => {
+                            setShowMobileDetail(false);
+                            setSelectedEmail(null);
+                          }}
+                          onStar={handleStar}
+                          onDelete={handleDelete}
+                          inlineAlertMessage={inlineAlert && selectedEmail && String(inlineAlert.emailId) === String(selectedEmail.id) ? inlineAlert.message : undefined}
+                          onInlineAlertClose={() => {
+                            setInlineAlert(null);
+                          }}
+                          onReply={handleReply}
+                          onReplyAll={handleReplyAll}
+                          onForward={handleForward}
+                          onSnooze={handleSnooze}
+                          onSummarize={handleSummarize}
+                          loadingSummary={loadingSummary}
+                          onDownloadAttachment={handleDownloadAttachment}
+                          showMobileDetail={showMobileDetail}
+                          showBackButton={isMobile}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Content>
+            </Layout>
+          </Layout>
+
+          {/* Mobile Drawer */}
+          <Drawer
+            placement="left"
+            onClose={() => setMobileDrawerOpen(false)}
+            open={mobileDrawerOpen}
+            width={280}
+            styles={{ body: { padding: 0 } }}
+            closable={false}
           >
             <div className="sidebar-container">
-              {/* Branding removed: now in top header */}
               <div style={{ height: '16px' }} />
-
-              {/* Sidebar Content: Compose & Mailboxes */}
               <div className="sidebar-content">
                 <div style={{ padding: '0 8px 16px 8px' }}>
                   <Button
@@ -1100,8 +1446,11 @@ export default function InboxPage() {
                     icon={<EditOutlined />}
                     block
                     size="large"
-                    onClick={() => setIsComposeVisible(true)}
-                    style={{ borderRadius: '12px', height: '48px', boxShadow: '0 4px 12px rgba(102, 126, 234, 0.25)' }}
+                    onClick={() => {
+                      setIsComposeVisible(true);
+                      setMobileDrawerOpen(false);
+                    }}
+                    style={{ borderRadius: '12px', height: '48px' }}
                   >
                     Compose
                   </Button>
@@ -1113,7 +1462,10 @@ export default function InboxPage() {
                   items={mailboxes.map((mailbox) => ({
                     key: mailbox.id,
                     icon: iconMap[mailbox.icon] || <FolderOutlined />,
-                    onClick: () => handleMailboxSelect(mailbox.id),
+                    onClick: () => {
+                      handleMailboxSelect(mailbox.id);
+                      setMobileDrawerOpen(false);
+                    },
                     label: (
                       <div className="flex justify-between items-center w-full">
                         <span>{mailbox.name}</span>
@@ -1125,363 +1477,75 @@ export default function InboxPage() {
                   }))}
                 />
               </div>
-
-              {/* Sidebar Footer: User Profile */}
-              <div className="sidebar-footer">
-                <div className="flex items-center justify-between p-2 rounded-xl border border-gray-100 bg-white">
-                  <div className="flex items-center gap-3">
-                    <Avatar style={{ backgroundColor: '#667eea' }}>
-                      {user?.name?.charAt(0)?.toUpperCase()}
-                    </Avatar>
-                    <div className="flex flex-col">
-                      <Text strong style={{ fontSize: '13px', lineHeight: 1.2 }}>{user?.name}</Text>
-                      <Text type="secondary" style={{ fontSize: '11px' }}>{user?.email?.split('@')[0]}</Text>
-                    </div>
-                  </div>
-                  <Dropdown
-                    menu={{
-                      items: [
-                        { key: 'stats', icon: <PieChartOutlined />, label: 'Statistics', onClick: () => window.location.href = '/statistics' },
-                        { type: 'divider' },
-                        { key: 'logout', icon: <LogoutOutlined />, label: 'Logout', danger: true, onClick: logout }
-                      ]
-                    }}
-                    trigger={['click']}
-                  >
-                    <Button type="text" icon={<ExportOutlined style={{ color: '#8c8c8c' }} />} />
-                  </Dropdown>
-                </div>
-              </div>
             </div>
-          </Sider>
+          </Drawer>
 
-          {/* Sidebar Resize Handle */}
-          <div
-            className={`resize-handle hidden-mobile ${isResizingSidebar ? 'active' : ''}`}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              setIsResizingSidebar(true);
-            }}
+          <ComposeModal
+            visible={isComposeVisible}
+            onCancel={handleComposeClose}
+            onSend={handleComposeSend}
+            mode={composeMode}
+            currentUserEmail={replyToEmail?.accountEmail || user?.email}
+            originalEmail={replyToEmail ? {
+              id: replyToEmail.id,
+              threadId: replyToEmail.threadId,
+              from: replyToEmail.from,
+              to: replyToEmail.to,
+              cc: replyToEmail.cc,
+              subject: replyToEmail.subject,
+              body: replyToEmail.body,
+              receivedAt: replyToEmail.receivedAt,
+              removedNoReply: (replyToEmail as any).removedNoReply || []
+            } : undefined}
+          />
+          <KeyboardHelpModal
+            visible={isKeyboardHelpVisible}
+            onClose={() => setIsKeyboardHelpVisible(false)}
           />
 
-          <Layout style={{ flex: 1, overflow: 'hidden', background: '#f8fafc' }}>
-            <div className="px-6 py-2">
-              <FilterBar
-                filters={filters}
-                sortMode={sortMode}
-                onFilterChange={setFilters}
-                onSortChange={setSortMode}
-                onSync={handleSync}
-                onRefresh={handleRefresh}
-                onSettings={viewMode === 'kanban' ? () => setKanbanSettingsOpen(true) : undefined}
-                syncLoading={syncLoading}
-                refreshLoading={emailsLoading}
+          {/* Kanban Email Detail Modal */}
+          <Modal
+            open={!!selectedEmail && viewMode === 'kanban'}
+            onCancel={() => {
+              setSelectedEmail(null);
+              setShowMobileDetail(false);
+            }}
+            footer={null}
+            width={1000}
+            centered
+            styles={{
+              body: {
+                padding: '0 24px 24px 24px',
+                maxHeight: '85vh',
+                overflowY: 'auto',
+                borderRadius: '12px'
+              }
+            }}
+            className="email-detail-modal"
+            destroyOnClose
+          >
+            {selectedEmail && (
+              <EmailDetail
+                email={selectedEmail}
+                onBack={() => setSelectedEmail(null)}
+                onStar={handleStar}
+                onDelete={handleDelete}
+                onReply={handleReply}
+                onReplyAll={handleReplyAll}
+                onForward={handleForward}
+                onSnooze={handleSnooze}
+                onSummarize={handleSummarize}
+                loadingSummary={loadingSummary}
+                onDownloadAttachment={handleDownloadAttachment}
+                showMobileDetail={false}
+                showBackButton={false}
+                inlineAlertMessage={inlineAlert && selectedEmail && String(inlineAlert.emailId) === String(selectedEmail.id) ? inlineAlert.message : undefined}
+                onInlineAlertClose={() => { setInlineAlert(null); }}
               />
-            </div>
-
-            <Content style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-              {isSearching ? (
-                <div className="flex-1 overflow-hidden">
-                  <SearchResults
-                    results={searchResults}
-                    loading={searchLoading}
-                    onSelect={handleEmailSelect}
-                    onClose={handleClearSearch}
-                    searchQuery={searchQuery}
-                    onLoadMore={handleLoadMoreSearch}
-                    loadingMore={loadingMore}
-                    hasMore={!!nextPageToken}
-                    totalEstimate={totalEstimate}
-                    scores={searchScores}
-                    searchMode={searchMode}
-                  />
-                </div>
-              ) : (
-                <div className="flex h-full w-full overflow-hidden relative">
-                  {/* Left Column: List or Kanban */}
-                  <div
-                    className={`flex flex-col bg-white border-r border-gray-100 ${showMobileDetail ? (viewMode === 'list' ? 'hidden-mobile' : 'hidden') : 'flex w-full'}`}
-                    style={{
-                      width: viewMode === 'list' ? (selectedEmail ? `${listWidth}px` : '100%') : '100%',
-                      transition: isResizing ? 'none' : 'width 0.3s ease'
-                    }}
-                  >
-                    {viewMode === 'list' ? (
-                      <>
-                        <div className="p-2 border-b border-gray-100" style={{ paddingLeft: '24px' }}>
-                          <Title level={5} style={{ margin: 0 }}>
-                            {mailboxes.find(m => m.id === selectedMailbox)?.name || 'Inbox'}
-                          </Title>
-                        </div>
-                        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-2 inbox-list-scroll" style={{ paddingLeft: '24px', paddingRight: '12px' }}>
-                          {emailsLoading ? <div className="p-12 text-center"><Spin /></div> : (
-                            <>
-                              <List
-                                dataSource={emails}
-                                renderItem={(email, index) => (
-                                  <div id={`email-item-${email.id}`} key={email.id}>
-                                    <Card
-                                      hoverable
-                                      className={`mail-item-card cursor-pointer transition-all ${selectedEmail?.id === email.id ? 'email-card-selected' : ''}`}
-                                      styles={{ body: { padding: '12px' } }}
-                                      onClick={() => {
-                                        setActiveIndex(index);
-                                        handleEmailSelect(email);
-                                      }}
-                                    >
-                                      <div className="flex items-start gap-3">
-                                        {/* Left: Avatar */}
-                                        <Avatar
-                                          className="flex-shrink-0"
-                                          style={{ backgroundColor: email.isRead ? '#f1f5f9' : '#e0e7ff', color: email.isRead ? '#64748b' : '#4f46e5', fontWeight: 600 }}
-                                        >
-                                          {email.from.name ? email.from.name.charAt(0).toUpperCase() : '?'}
-                                        </Avatar>
-
-                                        {/* Middle: Content */}
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex justify-between items-start mb-0.5">
-                                            <div className="flex items-center gap-2 min-w-0">
-                                              {!email.isRead && <div className="unread-dot flex-shrink-0" />}
-                                              <Text strong={!email.isRead} className="mail-item-sender truncate">
-                                                {email.from.name}
-                                              </Text>
-                                              <div className="flex items-center gap-1 flex-shrink-0">
-                                                {email.hasPhysicalAttachments && (
-                                                  <PaperClipOutlined style={{ fontSize: '11px', color: '#94a3b8' }} />
-                                                )}
-                                                {email.hasCloudLinks && (
-                                                  <CloudOutlined style={{ fontSize: '11px', color: '#3b82f6' }} />
-                                                )}
-                                              </div>
-                                            </div>
-
-                                            <div className="flex items-center gap-2 flex-shrink-0">
-                                              <div
-                                                onClick={(e) => handleStar(e, email)}
-                                                className="cursor-pointer hover:scale-125 transition-transform duration-200"
-                                              >
-                                                {email.isStarred ? (
-                                                  <StarFilled style={{ color: '#f59e0b', fontSize: '15px' }} />
-                                                ) : (
-                                                  <StarOutlined style={{ color: '#cbd5e1', fontSize: '15px' }} />
-                                                )}
-                                              </div>
-                                              <Text type="secondary" style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>
-                                                {formatDate(email.receivedAt)}
-                                              </Text>
-                                            </div>
-                                          </div>
-
-                                          <Text strong={!email.isRead} className="mail-item-subject block truncate">
-                                            {email.subject}
-                                          </Text>
-                                          <Text className="mail-item-preview block truncate" style={{ marginTop: '2px' }}>
-                                            {email.preview}
-                                          </Text>
-                                        </div>
-                                      </div>
-                                    </Card>
-                                  </div>
-                                )}
-                              />
-                            </>
-                          )}
-                        </div>
-
-                        {/* Footer pagination: placed outside the scroll area so it stays pinned to bottom of left column */}
-                        <div className="inbox-pagination-footer">
-                          <div className="inbox-pagination-info">
-                            {totalEmails > 0 ? `${Math.min(((currentPage - 1) * pageSize) + 1, totalEmails)}-${Math.min(currentPage * pageSize, totalEmails)} of ${totalEmails} emails` : 'No emails'}
-                          </div>
-                          <div className="inbox-pagination-controls compact-pagination">
-                            <Pagination
-                              simple
-                              size="small"
-                              current={currentPage}
-                              total={totalEmails}
-                              pageSize={pageSize}
-                              onChange={handlePageChange}
-                              showSizeChanger
-                              pageSizeOptions={["10", "20", "50", "100"]}
-                            />
-                          </div>
-                        </div>
-                      </>
-                    ) : (
-                      <KanbanBoard
-                        onCardClick={handleKanbanCardClick}
-                        filters={filters}
-                        sortMode={sortMode}
-                        accountId={accountId}
-                        settingsOpen={kanbanSettingsOpen}
-                        onSettingsClose={() => {
-                          setKanbanSettingsOpen(false);
-                          setTriggerAddColumn(false);
-                        }}
-                        onAddColumnClick={() => {
-                          setTriggerAddColumn(true);
-                          setKanbanSettingsOpen(true);
-                        }}
-                        triggerAddOnOpen={triggerAddColumn}
-                      />
-                    )}
-                  </div>
-
-                  {/* Resizer Handle */}
-                  {viewMode === 'list' && selectedEmail && (
-                    <div
-                      className={`resize-handle hidden-mobile ${isResizing ? 'active' : ''}`}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        setIsResizing(true);
-                      }}
-                    />
-                  )}
-
-                  {/* Right Column: Detail (List View only) */}
-                  {selectedEmail && viewMode === 'list' && (
-                    <div className={`flex-1 bg-white overflow-y-auto ${!showMobileDetail ? 'hidden-mobile flex' : 'absolute inset-0 z-50 flex md:relative md:flex'}`}>
-                      <EmailDetail
-                        email={selectedEmail}
-                        onBack={() => {
-                          setShowMobileDetail(false);
-                          setSelectedEmail(null);
-                        }}
-                        onStar={handleStar}
-                        onDelete={handleDelete}
-                        onReply={handleReply}
-                        onReplyAll={handleReplyAll}
-                        onForward={handleForward}
-                        onSnooze={handleSnooze}
-                        onSummarize={handleSummarize}
-                        loadingSummary={loadingSummary}
-                        onDownloadAttachment={handleDownloadAttachment}
-                        showMobileDetail={showMobileDetail}
-                        showBackButton={isMobile}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-            </Content>
-          </Layout>
-        </Layout>
-
-        {/* Mobile Drawer */}
-        <Drawer
-          placement="left"
-          onClose={() => setMobileDrawerOpen(false)}
-          open={mobileDrawerOpen}
-          width={280}
-          styles={{ body: { padding: 0 } }}
-          closable={false}
-        >
-          <div className="sidebar-container">
-            <div style={{ height: '16px' }} />
-            <div className="sidebar-content">
-              <div style={{ padding: '0 8px 16px 8px' }}>
-                <Button
-                  type="primary"
-                  icon={<EditOutlined />}
-                  block
-                  size="large"
-                  onClick={() => {
-                    setIsComposeVisible(true);
-                    setMobileDrawerOpen(false);
-                  }}
-                  style={{ borderRadius: '12px', height: '48px' }}
-                >
-                  Compose
-                </Button>
-              </div>
-              <Menu
-                mode="inline"
-                selectedKeys={[selectedMailbox]}
-                style={{ border: 'none' }}
-                items={mailboxes.map((mailbox) => ({
-                  key: mailbox.id,
-                  icon: iconMap[mailbox.icon] || <FolderOutlined />,
-                  onClick: () => {
-                    handleMailboxSelect(mailbox.id);
-                    setMobileDrawerOpen(false);
-                  },
-                  label: (
-                    <div className="flex justify-between items-center w-full">
-                      <span>{mailbox.name}</span>
-                      {mailbox.unreadCount > 0 && (
-                        <Badge count={mailbox.unreadCount} style={{ backgroundColor: '#667eea', boxShadow: 'none' }} />
-                      )}
-                    </div>
-                  ),
-                }))}
-              />
-            </div>
-          </div>
-        </Drawer>
-
-        <ComposeModal
-          visible={isComposeVisible}
-          onCancel={handleComposeClose}
-          onSend={handleComposeSend}
-          mode={composeMode}
-          currentUserEmail={replyToEmail?.accountEmail || user?.email}
-          originalEmail={replyToEmail ? {
-            id: replyToEmail.id,
-            threadId: replyToEmail.threadId,
-            from: replyToEmail.from,
-            to: replyToEmail.to,
-            cc: replyToEmail.cc,
-            subject: replyToEmail.subject,
-            body: replyToEmail.body,
-            receivedAt: replyToEmail.receivedAt
-          } : undefined}
-        />
-        <KeyboardHelpModal
-          visible={isKeyboardHelpVisible}
-          onClose={() => setIsKeyboardHelpVisible(false)}
-        />
-
-        {/* Kanban Email Detail Modal */}
-        <Modal
-          open={!!selectedEmail && viewMode === 'kanban'}
-          onCancel={() => {
-            setSelectedEmail(null);
-            setShowMobileDetail(false);
-          }}
-          footer={null}
-          width={1000}
-          centered
-          styles={{
-            body: {
-              padding: '0 24px 24px 24px',
-              maxHeight: '85vh',
-              overflowY: 'auto',
-              borderRadius: '12px'
-            }
-          }}
-          className="email-detail-modal"
-          destroyOnClose
-        >
-          {selectedEmail && (
-            <EmailDetail
-              email={selectedEmail}
-              onBack={() => setSelectedEmail(null)}
-              onStar={handleStar}
-              onDelete={handleDelete}
-              onReply={handleReply}
-              onReplyAll={handleReplyAll}
-              onForward={handleForward}
-              onSnooze={handleSnooze}
-              onSummarize={handleSummarize}
-              loadingSummary={loadingSummary}
-              onDownloadAttachment={handleDownloadAttachment}
-              showMobileDetail={false}
-              showBackButton={false}
-            />
-          )}
-        </Modal>
-      </Layout >
+            )}
+          </Modal>
+        </Layout >
+      </InlineAlertContext.Provider>
     </ProtectedRoute >
   );
 }

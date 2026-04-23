@@ -30,6 +30,7 @@ interface ComposeModalProps {
     from: { name: string; email: string };
     to: Array<{ name: string; email: string } | string>;
     cc?: Array<{ name: string; email: string } | string>;
+    removedNoReply?: string[];
     subject: string;
     body: string;
     receivedAt: string;
@@ -50,6 +51,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [toEmails, setToEmails] = useState<string[]>([]);
   const [ccEmails, setCcEmails] = useState<string[]>([]);
+  const [removedNoReply, setRemovedNoReply] = useState<string[]>([]);
   const [bccEmails, setBccEmails] = useState<string[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [ccInputValue, setCcInputValue] = useState('');
@@ -216,6 +218,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
 
       setToEmails(toRecipients);
       setCcEmails(ccRecipients);
+      setRemovedNoReply((originalEmail as any).removedNoReply || []);
       setBccEmails([]);
       // Always show CC for Reply All mode, or if there are CC recipients
       setShowCc(mode === 'reply-all' || ccRecipients.length > 0);
@@ -571,6 +574,20 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
                         {email}
                       </Tag>
                     ))}
+                    {/* If we removed no-reply recipients, show them with an option to include back */}
+                    {removedNoReply && removedNoReply.length > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 8 }}>
+                        {removedNoReply.map(addr => (
+                          <div key={addr} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <Tag color="orange" style={{ margin: 0 }}>{addr}</Tag>
+                            <Button type="link" size="small" onClick={() => {
+                              if (!ccEmails.includes(addr)) setCcEmails(prev => [...prev, addr]);
+                              setRemovedNoReply(prev => prev.filter(a => a !== addr));
+                            }}>Include</Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <Text style={{ fontSize: '14px', color: '#8c8c8c' }}>

@@ -268,3 +268,13 @@
 .email-detail-actions .ant-btn .anticon {
   font-size: 14px !important;
 }
+
+/* Ensure the action buttons in the email detail are interactive and above common layout layers */
+.email-detail-actions {
+  position: relative;
+  z-index: 2000;
+}
+
+.email-detail-actions .ant-btn {
+  pointer-events: auto !important;
+}

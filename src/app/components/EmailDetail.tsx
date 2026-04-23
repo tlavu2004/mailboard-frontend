@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Typography, Space, Avatar, Card, Empty, Spin, Popover, Tag, Tooltip, message } from 'antd';
+import { Button, Typography, Space, Avatar, Card, Empty, Spin, Popover, Tag, Tooltip, message, Alert } from 'antd';
 import {
   ArrowLeftOutlined,
   StarOutlined,
@@ -47,6 +47,8 @@ interface EmailDetailProps {
   showBackButton?: boolean;
   className?: string;
   style?: React.CSSProperties;
+  inlineAlertMessage?: string;
+  onInlineAlertClose?: () => void;
 }
 
 const EmailDetail: React.FC<EmailDetailProps> = ({
@@ -66,6 +68,8 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
   showBackButton,
   className,
   style,
+  inlineAlertMessage,
+  onInlineAlertClose,
 }) => {
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
@@ -683,6 +687,18 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
 
       <div style={{ width: '100%', margin: 0, padding: showMobileDetail ? '0 12px 12px' : '0 12px' }}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          {inlineAlertMessage && (
+            <div style={{ width: '100%' }}>
+              <Alert
+                message={inlineAlertMessage}
+                type="warning"
+                showIcon
+                closable
+                onClose={() => onInlineAlertClose && onInlineAlertClose()}
+                style={{ marginBottom: 6 }}
+              />
+            </div>
+          )}
           <div style={{ marginBottom: '8px' }}>
             <Title level={3} style={{ marginTop: '12px', marginBottom: '8px' }}>{email.subject}</Title>
           </div>
@@ -749,11 +765,11 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             </div>
           </div>
 
-          <Space wrap size={6} className="email-detail-actions" style={{ marginTop: '6px' }}>
-            <Button size="small" type="primary" onClick={() => onReply && onReply(email)}>
+          <Space wrap size={6} className="email-detail-actions" style={{ marginTop: '6px', position: 'relative', zIndex: 2000, pointerEvents: 'auto' }}>
+            <Button size="small" type="primary" onClick={() => { console.log('[EmailDetail] Reply clicked', email?.id); onReply && onReply(email); }}>
               Reply
             </Button>
-            <Button size="small" onClick={() => onReplyAll && onReplyAll(email)}>
+            <Button size="small" onClick={() => { console.log('[EmailDetail] ReplyAll clicked', email?.id); onReplyAll && onReplyAll(email); }}>
               Reply All
             </Button>
             <Button size="small" onClick={() => onForward && onForward(email)}>
@@ -888,6 +904,8 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                       display: 'block',
                       overflowY: 'hidden',
                       overflowX: 'auto',
+                      position: 'relative',
+                      zIndex: 0,
                     }}
                     scrolling="auto"
                     sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
