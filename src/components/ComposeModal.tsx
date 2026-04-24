@@ -89,16 +89,24 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
       .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, '')
       .replace(/<template\b[^<]*(?:(?!<\/template>)<[^<]*)*<\/template>/gi, '');
 
+    // Preserve visual line breaks from common block-level HTML structures.
+    cleaned = cleaned
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|section|article|header|footer|blockquote|pre|li|tr|h[1-6])>/gi, '\n')
+      .replace(/<li\b[^>]*>/gi, '- ')
+      .replace(/<\/(td|th)>/gi, '\t')
+      .replace(/<\/(table)>/gi, '\n')
+      .replace(/&nbsp;/gi, ' ');
+
     if (typeof window !== 'undefined') {
       const parser = new DOMParser();
       const doc = parser.parseFromString(cleaned, 'text/html');
       doc.querySelectorAll('script, style, noscript, template').forEach((node) => node.remove());
-      return stripTagLikeText(doc.body.textContent || '');
+      const text = doc.body.textContent || '';
+      return stripTagLikeText(text);
     }
 
     const plainText = cleaned
-      .replace(/<br\s*\/?\s*>/gi, '\n')
-      .replace(/<\/p>/gi, '\n')
       .replace(/<[^>]+>/g, '')
       .replace(/\n{3,}/g, '\n\n');
 
