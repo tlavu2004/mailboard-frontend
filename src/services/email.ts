@@ -182,6 +182,22 @@ export const emailService = {
     await emailService.modifyEmail(emailId, ['TRASH'], []);
   },
 
+  // Move email to spam
+  markAsSpam: async (emailId: string): Promise<void> => {
+    if (USE_MOCK_API) {
+      return;
+    }
+    await emailService.modifyEmail(emailId, ['SPAM'], ['INBOX']);
+  },
+
+  // Restore email back to inbox from Trash/Spam
+  restoreToInbox: async (emailId: string, from: 'TRASH' | 'SPAM'): Promise<void> => {
+    if (USE_MOCK_API) {
+      return;
+    }
+    await emailService.modifyEmail(emailId, ['INBOX'], [from]);
+  },
+
   // Sync emails from Gmail
   syncEmails: async (accountId?: number, folderName: string = 'INBOX', limit: number = 10, page: number = 0): Promise<void> => {
     if (USE_MOCK_API) {

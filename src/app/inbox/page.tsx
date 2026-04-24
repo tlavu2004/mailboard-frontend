@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
-import { Layout, Menu, List, Card, Button, Badge, Typography, Space, Avatar, Spin, message, Empty, Modal, Pagination, Dropdown, Drawer, notification, Alert } from 'antd';
+import { Layout, Menu, List, Card, Button, Typography, Space, Avatar, Spin, message, Empty, Modal, Pagination, Dropdown, Drawer, notification, Alert } from 'antd';
 import EmailDetail from '@/app/components/EmailDetail';
 import InlineAlertContext from '@/contexts/InlineAlertContext';
 import ComposeModal from '@/components/ComposeModal';
@@ -10,10 +10,13 @@ import {
   InboxOutlined,
   StarOutlined,
   StarFilled,
+  ClockCircleOutlined,
   SendOutlined,
-  FileOutlined,
+  FileTextOutlined,
   DeleteOutlined,
   FolderOutlined,
+  WarningOutlined,
+  MailOutlined,
   ReloadOutlined,
   LogoutOutlined,
   PaperClipOutlined,
@@ -51,9 +54,22 @@ const iconMap: Record<string, React.ReactNode> = {
   InboxOutlined: <InboxOutlined />,
   StarOutlined: <StarOutlined />,
   SendOutlined: <SendOutlined />,
-  FileOutlined: <FileOutlined />,
+  FileOutlined: <FileTextOutlined />,
   DeleteOutlined: <DeleteOutlined />,
   FolderOutlined: <FolderOutlined />,
+};
+
+const MAILBOX_META: Record<string, { name: string; order: number; icon: React.ReactNode }> = {
+  INBOX: { name: 'Inbox', order: 10, icon: <InboxOutlined /> },
+  STARRED: { name: 'Starred', order: 20, icon: <StarOutlined /> },
+  SNOOZED: { name: 'Snoozed', order: 30, icon: <ClockCircleOutlined /> },
+  SENT: { name: 'Sent', order: 40, icon: <SendOutlined /> },
+  DRAFT: { name: 'Drafts', order: 50, icon: <FileTextOutlined /> },
+  DRAFTS: { name: 'Drafts', order: 50, icon: <FileTextOutlined /> },
+  IMPORTANT: { name: 'Important', order: 60, icon: <WarningOutlined /> },
+  ALL_MAIL: { name: 'All Mail', order: 70, icon: <MailOutlined /> },
+  SPAM: { name: 'Spam', order: 80, icon: <WarningOutlined /> },
+  TRASH: { name: 'Trash', order: 90, icon: <DeleteOutlined /> },
 };
 
 const parseAsLocalDate = (value?: string): Date => {
@@ -142,6 +158,38 @@ export default function InboxPage() {
   const [sortMode, setSortMode] = useState<SortMode>('date-desc');
   const [activeIndex, setActiveIndex] = useState<number>(-1);
   const [isKeyboardHelpVisible, setIsKeyboardHelpVisible] = useState(false);
+
+  const normalizeMailboxId = useCallback((id?: string) => String(id || '').trim().toUpperCase(), []);
+
+  const getMailboxDisplayMeta = useCallback((mailbox: Mailbox) => {
+    const normalizedId = normalizeMailboxId(mailbox.id);
+    const matched = MAILBOX_META[normalizedId];
+
+    return {
+      id: mailbox.id,
+      displayName: matched?.name || mailbox.name,
+      order: matched?.order ?? (mailbox.type === 'custom' ? 200 : 120),
+      icon: matched?.icon || iconMap[mailbox.icon] || <FolderOutlined />,
+      unreadCount: mailbox.unreadCount,
+      type: mailbox.type,
+      rawName: mailbox.name,
+    };
+  }, [normalizeMailboxId]);
+
+  const visibleMailboxes = useMemo(() => {
+    return [...mailboxes]
+      .map(getMailboxDisplayMeta)
+      .sort((a, b) => {
+        if (a.order !== b.order) return a.order - b.order;
+        if (a.type !== b.type) return a.type === 'system' ? -1 : 1;
+        return a.displayName.localeCompare(b.displayName);
+      });
+  }, [mailboxes, getMailboxDisplayMeta]);
+
+  const selectedMailboxTitle = useMemo(() => {
+    const selected = visibleMailboxes.find((m) => m.id === selectedMailbox);
+    return selected?.displayName || 'Inbox';
+  }, [visibleMailboxes, selectedMailbox]);
 
   // Refs
   const searchInputRef = useRef<any>(null);
@@ -643,7 +691,16 @@ export default function InboxPage() {
   const handleSync = async () => {
     setSyncLoading(true);
     try {
-      await emailService.syncEmails();
+      const folderMap: Record<string, string> = {
+        INBOX: 'INBOX',
+        SPAM: '[Gmail]/Spam',
+        TRASH: '[Gmail]/Trash',
+        SENT: '[Gmail]/Sent Mail',
+        DRAFT: '[Gmail]/Drafts',
+        DRAFTS: '[Gmail]/Drafts',
+      };
+      const syncFolder = folderMap[(selectedMailbox || 'INBOX').toUpperCase()] || selectedMailbox || 'INBOX';
+      await emailService.syncEmails(undefined, syncFolder);
       message.success('Sync completed. Refreshing emails...');
       await loadEmails(selectedMailbox);
     } catch (error) {
@@ -707,9 +764,27 @@ export default function InboxPage() {
   const handleNotification = useCallback((msg: any) => {
     console.log('[InboxPage] WebSocket notification received:', msg);
     if (msg?.type === 'NEW_EMAILS') {
+      const canInsertRealtimeIntoCurrentList =
+        selectedMailbox === 'INBOX' &&
+        currentPage === 1 &&
+        !isSearching &&
+        sortMode === 'date-desc' &&
+        !filters.unread &&
+        !filters.hasAttachment;
+
       // If backend provided specific email IDs, fetch them and insert into UI immediately
       if (Array.isArray(msg.emailIds) && msg.emailIds.length > 0) {
-        message.info('New emails received! Updating view...');
+        message.info(canInsertRealtimeIntoCurrentList
+          ? 'New emails received! Updating view...'
+          : 'New emails received. Current page is kept stable.');
+
+        if (!canInsertRealtimeIntoCurrentList) {
+          // Keep pagination/order stable for non-first pages or filtered/sorted views.
+          // We only refresh mailbox counters; users can refresh/open page 1 when ready.
+          loadMailboxes();
+          return;
+        }
+
         (async () => {
           try {
             for (const id of msg.emailIds) {
@@ -752,7 +827,7 @@ export default function InboxPage() {
         }, 500);
       }
     }
-  }, [selectedMailbox, loadMailboxes, loadEmails, currentPage, pageSize, filters]);
+  }, [selectedMailbox, loadMailboxes, loadEmails, currentPage, pageSize, filters, isSearching, sortMode]);
 
   useEmailNotifications(accountId, handleNotification);
 
@@ -916,6 +991,43 @@ export default function InboxPage() {
       if (emailIndex >= 0) {
         restoredEmails.splice(emailIndex, 0, email);
       }
+      setEmails(originalEmails);
+    }
+  };
+
+  const handleMarkSpam = async (email: Email) => {
+    const originalEmails = [...emails];
+    setEmails(prev => prev.filter(e => e.id !== email.id));
+    if (selectedEmail?.id === email.id) {
+      setSelectedEmail(null);
+      setShowMobileDetail(false);
+    }
+
+    try {
+      await emailService.markAsSpam(email.id);
+      message.success('Moved to Spam');
+    } catch (error) {
+      console.error('Spam move error:', error);
+      message.error('Failed to move email to Spam, restoring...');
+      setEmails(originalEmails);
+    }
+  };
+
+  const handleRestoreToInbox = async (email: Email) => {
+    const fromMailbox = (email.mailboxId || '').toUpperCase() === 'TRASH' ? 'TRASH' : 'SPAM';
+    const originalEmails = [...emails];
+    setEmails(prev => prev.filter(e => e.id !== email.id));
+    if (selectedEmail?.id === email.id) {
+      setSelectedEmail(null);
+      setShowMobileDetail(false);
+    }
+
+    try {
+      await emailService.restoreToInbox(email.id, fromMailbox as 'TRASH' | 'SPAM');
+      message.success('Moved back to Inbox');
+    } catch (error) {
+      console.error('Restore error:', error);
+      message.error('Failed to restore email, restoring local state...');
       setEmails(originalEmails);
     }
   };
@@ -1198,15 +1310,15 @@ export default function InboxPage() {
                     mode="inline"
                     selectedKeys={[selectedMailbox]}
                     style={{ border: 'none' }}
-                    items={mailboxes.map((mailbox) => ({
+                    items={visibleMailboxes.map((mailbox) => ({
                       key: mailbox.id,
-                      icon: iconMap[mailbox.icon] || <FolderOutlined />,
+                      icon: mailbox.icon,
                       onClick: () => handleMailboxSelect(mailbox.id),
                       label: (
                         <div className="flex justify-between items-center w-full">
-                          <span>{mailbox.name}</span>
+                          <span>{mailbox.displayName}</span>
                           {mailbox.unreadCount > 0 && (
-                            <Badge count={mailbox.unreadCount} style={{ backgroundColor: '#667eea', boxShadow: 'none' }} />
+                            <span className="gmail-mailbox-count">{mailbox.unreadCount}</span>
                           )}
                         </div>
                       ),
@@ -1298,7 +1410,7 @@ export default function InboxPage() {
                         <>
                           <div className="p-2 border-b border-gray-100" style={{ paddingLeft: '24px' }}>
                             <Title level={5} style={{ margin: 0 }}>
-                              {mailboxes.find(m => m.id === selectedMailbox)?.name || 'Inbox'}
+                              {selectedMailboxTitle}
                             </Title>
                           </div>
                           <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-2 inbox-list-scroll" style={{ paddingLeft: '24px', paddingRight: '12px' }}>
@@ -1438,6 +1550,8 @@ export default function InboxPage() {
                           }}
                           onStar={handleStar}
                           onDelete={handleDelete}
+                          onSpam={handleMarkSpam}
+                          onRestore={handleRestoreToInbox}
                           inlineAlertMessage={inlineAlert && selectedEmail && String(inlineAlert.emailId) === String(selectedEmail.id) ? inlineAlert.message : undefined}
                           onInlineAlertClose={() => {
                             setInlineAlert(null);
@@ -1491,18 +1605,18 @@ export default function InboxPage() {
                   mode="inline"
                   selectedKeys={[selectedMailbox]}
                   style={{ border: 'none' }}
-                  items={mailboxes.map((mailbox) => ({
+                  items={visibleMailboxes.map((mailbox) => ({
                     key: mailbox.id,
-                    icon: iconMap[mailbox.icon] || <FolderOutlined />,
+                    icon: mailbox.icon,
                     onClick: () => {
                       handleMailboxSelect(mailbox.id);
                       setMobileDrawerOpen(false);
                     },
                     label: (
                       <div className="flex justify-between items-center w-full">
-                        <span>{mailbox.name}</span>
+                        <span>{mailbox.displayName}</span>
                         {mailbox.unreadCount > 0 && (
-                          <Badge count={mailbox.unreadCount} style={{ backgroundColor: '#667eea', boxShadow: 'none' }} />
+                          <span className="gmail-mailbox-count">{mailbox.unreadCount}</span>
                         )}
                       </div>
                     ),
@@ -1562,6 +1676,8 @@ export default function InboxPage() {
                 onBack={() => setSelectedEmail(null)}
                 onStar={handleStar}
                 onDelete={handleDelete}
+                onSpam={handleMarkSpam}
+                onRestore={handleRestoreToInbox}
                 onReply={handleReply}
                 onReplyAll={handleReplyAll}
                 onForward={handleForward}

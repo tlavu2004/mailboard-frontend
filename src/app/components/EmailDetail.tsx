@@ -15,6 +15,8 @@ import {
   CloudDownloadOutlined,
   LinkOutlined,
   UserOutlined,
+  InboxOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import { Email } from '@/types/email';
 import SnoozePopover from './SnoozePopover';
@@ -35,6 +37,8 @@ interface EmailDetailProps {
   onBack: () => void;
   onStar: (e: React.MouseEvent, email: Email) => void;
   onDelete: (e: React.MouseEvent, email: Email) => void;
+  onSpam?: (email: Email) => void;
+  onRestore?: (email: Email) => void;
   onReply?: (email: Email) => void;
   onReplyAll?: (email: Email) => void;
   onForward?: (email: Email) => void;
@@ -56,6 +60,8 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
   onBack,
   onStar,
   onDelete,
+  onSpam,
+  onRestore,
   onReply,
   onReplyAll,
   onForward,
@@ -117,6 +123,11 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
       window.open(getGmailUrl(email), '_blank', 'noopener,noreferrer');
     }
   };
+
+  const mailboxId = (email?.mailboxId || '').toUpperCase();
+  const canRestore = mailboxId === 'TRASH' || mailboxId === 'SPAM';
+  const canMarkSpam = mailboxId !== 'SPAM' && mailboxId !== 'TRASH' && mailboxId !== 'SENT' && mailboxId !== 'DRAFTS' && mailboxId !== 'DRAFT';
+  const canDelete = mailboxId !== 'TRASH';
 
   const [iframeHeight, setIframeHeight] = React.useState<number>(400);
   const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
@@ -797,9 +808,21 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
               </Button>
             </Popover>
 
-            <Button size="small" icon={<DeleteOutlined />} danger onClick={(e) => onDelete(e, email)}>
-              Delete
-            </Button>
+            {canDelete && (
+              <Button size="small" icon={<DeleteOutlined />} danger onClick={(e) => onDelete(e, email)}>
+                Delete
+              </Button>
+            )}
+            {canMarkSpam && (
+              <Button size="small" icon={<WarningOutlined />} onClick={() => onSpam && onSpam(email)}>
+                Spam
+              </Button>
+            )}
+            {canRestore && (
+              <Button size="small" icon={<InboxOutlined />} onClick={() => onRestore && onRestore(email)}>
+                Move to Inbox
+              </Button>
+            )}
             <Button
               size="small"
               icon={<ExportOutlined />}

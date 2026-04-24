@@ -49,6 +49,19 @@
   border-radius: 8px !important;
 }
 
+.gmail-mailbox-count {
+  font-size: 12px;
+  line-height: 1;
+  color: #5f6368;
+  font-weight: 600;
+  min-width: 20px;
+  text-align: right;
+}
+
+.ant-menu-item-selected .gmail-mailbox-count {
+  color: #1a73e8;
+}
+
 /* Top Toolbar Styling */
 .top-toolbar {
   background: #ffffff !important;
