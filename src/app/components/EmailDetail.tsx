@@ -813,11 +813,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                 Delete
               </Button>
             )}
-            {canMarkSpam && (
-              <Button size="small" icon={<WarningOutlined />} onClick={() => onSpam && onSpam(email)}>
-                Spam
-              </Button>
-            )}
+
             {canRestore && (
               <Button size="small" icon={<InboxOutlined />} onClick={() => onRestore && onRestore(email)}>
                 Move to Inbox

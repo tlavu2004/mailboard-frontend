@@ -68,7 +68,6 @@ const MAILBOX_META: Record<string, { name: string; order: number; icon: React.Re
   DRAFTS: { name: 'Drafts', order: 50, icon: <FileTextOutlined /> },
   IMPORTANT: { name: 'Important', order: 60, icon: <WarningOutlined /> },
   ALL_MAIL: { name: 'All Mail', order: 70, icon: <MailOutlined /> },
-  SPAM: { name: 'Spam', order: 80, icon: <WarningOutlined /> },
   TRASH: { name: 'Trash', order: 90, icon: <DeleteOutlined /> },
 };
 
@@ -178,13 +177,14 @@ export default function InboxPage() {
 
   const visibleMailboxes = useMemo(() => {
     return [...mailboxes]
+      .filter(m => normalizeMailboxId(m.id) !== 'SPAM') // V10.40: Hide Spam folder as requested
       .map(getMailboxDisplayMeta)
       .sort((a, b) => {
         if (a.order !== b.order) return a.order - b.order;
         if (a.type !== b.type) return a.type === 'system' ? -1 : 1;
         return a.displayName.localeCompare(b.displayName);
       });
-  }, [mailboxes, getMailboxDisplayMeta]);
+  }, [mailboxes, getMailboxDisplayMeta, normalizeMailboxId]);
 
   const selectedMailboxTitle = useMemo(() => {
     const selected = visibleMailboxes.find((m) => m.id === selectedMailbox);

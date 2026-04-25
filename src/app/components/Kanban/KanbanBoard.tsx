@@ -96,6 +96,7 @@ export default function KanbanBoard({
       // Force refresh with cache buster
       const columnsData = await kanbanService.getColumns();
       const incomingMeta: ColumnWithMeta[] = columnsData
+        .filter(col => (col.key || '').toUpperCase() !== 'SPAM') // V10.42: Hide Spam
         .sort((a, b) => a.order - b.order)
         .map(col => ({
           id: col.id,
