@@ -28,7 +28,7 @@ export const emailService = {
       return await mockEmailApi.getEmails(mailboxId, page, perPage) as unknown as EmailListResponse;
     }
 
-    const response = await apiClient.get<EmailListResponse>(`mailboxes/${mailboxId}/emails`, {
+    const response = await apiClient.get<any>(`mailboxes/${mailboxId}/emails`, {
       params: {
         page,
         perPage,
@@ -39,7 +39,13 @@ export const emailService = {
         _t: Date.now() // Cache busting (V10.27)
       },
     });
-    return response.data;
+    const data = response.data;
+    if (data && data.emails && Array.isArray(data.emails)) {
+      data.emails.forEach((e: any) => {
+        if (!e.mailboxId && e.status) e.mailboxId = e.status;
+      });
+    }
+    return data;
   },
 
   // Get email detail
@@ -48,10 +54,14 @@ export const emailService = {
       return await mockEmailApi.getEmailById(emailId) as unknown as Email;
     }
 
-    const response = await apiClient.get<Email>(`emails/${emailId}`, {
+    const response = await apiClient.get<any>(`emails/${emailId}`, {
       params: { _t: Date.now() } // Cache busting (V10.27)
     });
-    return response.data;
+    const data = response.data;
+    if (data && !data.mailboxId && data.status) {
+      data.mailboxId = data.status;
+    }
+    return data;
   },
 
   // Search emails

@@ -763,7 +763,8 @@ export default function InboxPage() {
   // real-time notifications
   const handleNotification = useCallback((msg: any) => {
     console.log('[InboxPage] WebSocket notification received:', msg);
-    if (msg?.type === 'NEW_EMAILS') {
+    if (msg?.type === 'NEW_EMAILS' || msg?.type === 'UPDATED_EMAILS') {
+      const isUpdateOnly = msg.type === 'UPDATED_EMAILS';
       const canInsertRealtimeIntoCurrentList =
         selectedMailbox === 'INBOX' &&
         currentPage === 1 &&
@@ -791,17 +792,38 @@ export default function InboxPage() {
               try {
                 const full = await emailService.getEmailDetail(String(id));
                 setEmails(prev => {
+                  const belongsInView = 
+                    (full.mailboxId || '').toUpperCase() === (selectedMailbox || 'INBOX').toUpperCase() ||
+                    ((full.mailboxId || '').toUpperCase() === 'INBOX' && selectedMailbox === 'INBOX');
+                    
                   // Avoid duplicates
                   const exists = prev.some(e => e.id === full.id);
                   if (exists) {
+                    if (!belongsInView) {
+                       return prev.filter(e => e.id !== full.id);
+                    }
                     // Replace existing entry with fresh data
                     return prev.map(e => e.id === full.id ? full : e);
                   }
+                  
+                  // NEW EMAIL (not in current list)
+                  if (!belongsInView || isUpdateOnly) return prev;
+
+                  // Safety: Only prepend if it's actually newer than the top email in the list
+                  // or if the list is empty.
+                  const topEmailDate = prev.length > 0 ? new Date(prev[0].receivedAt).getTime() : 0;
+                  const newEmailDate = new Date(full.receivedAt).getTime();
+                  
+                  if (newEmailDate < topEmailDate && prev.length > 0) {
+                      // It's an old email being discovered/updated but not for this page
+                      return prev;
+                  }
+                  
                   // Prepend newest message
                   const next = [full, ...prev];
                   // Keep list size bounded to pageSize
                   // Update total count when a truly new email arrives
-                  setTotalEmails(t => t + (exists ? 0 : 1));
+                  setTotalEmails(t => t + 1);
                   return next.slice(0, pageSize);
                 });
               } catch (err) {
