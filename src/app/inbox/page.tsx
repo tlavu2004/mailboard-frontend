@@ -775,17 +775,6 @@ export default function InboxPage() {
 
       // If backend provided specific email IDs, fetch them and insert into UI immediately
       if (Array.isArray(msg.emailIds) && msg.emailIds.length > 0) {
-        message.info(canInsertRealtimeIntoCurrentList
-          ? 'New emails received! Updating view...'
-          : 'New emails received. Current page is kept stable.');
-
-        if (!canInsertRealtimeIntoCurrentList) {
-          // Keep pagination/order stable for non-first pages or filtered/sorted views.
-          // We only refresh mailbox counters; users can refresh/open page 1 when ready.
-          loadMailboxes();
-          return;
-        }
-
         (async () => {
           try {
             for (const id of msg.emailIds) {
@@ -796,48 +785,52 @@ export default function InboxPage() {
                     (full.mailboxId || '').toUpperCase() === (selectedMailbox || 'INBOX').toUpperCase() ||
                     ((full.mailboxId || '').toUpperCase() === 'INBOX' && selectedMailbox === 'INBOX');
                     
-                  // Avoid duplicates
-                  const exists = prev.some(e => e.id === full.id);
+                  // ALWAYS process removals/updates for existing items to keep view fresh
+                  const exists = prev.some(e => String(e.id) === String(full.id));
                   if (exists) {
                     if (!belongsInView) {
-                       return prev.filter(e => e.id !== full.id);
+                       // If the email being read is the one being removed, close the reading panel
+                       setSelectedEmail(current => {
+                         if (current && String(current.id) === String(full.id)) {
+                           return null;
+                         }
+                         return current;
+                       });
+                       return prev.filter(e => String(e.id) !== String(full.id));
                     }
                     // Replace existing entry with fresh data
-                    return prev.map(e => e.id === full.id ? full : e);
+                    return prev.map(e => String(e.id) === String(full.id) ? full : e);
                   }
                   
-                  // NEW EMAIL (not in current list)
-                  if (!belongsInView || isUpdateOnly) return prev;
+                  // NEW EMAIL (not in current view list)
+                  // We allow 'isUpdateOnly' here because a status change (e.g. Restore from Trash) 
+                  // makes an old email "new" to the current Inbox view.
+                  if (!belongsInView || !canInsertRealtimeIntoCurrentList) return prev;
 
-                  // Safety: Only prepend if it's actually newer than the top email in the list
-                  // or if the list is empty.
-                  const topEmailDate = prev.length > 0 ? new Date(prev[0].receivedAt).getTime() : 0;
+                  // Safety: Only prepend if it's actually newer than the bottom-most email in the current view
+                  // or if the list isn't full yet.
+                  const bottomEmailDate = prev.length > 0 ? new Date(prev[prev.length - 1].receivedAt).getTime() : 0;
                   const newEmailDate = new Date(full.receivedAt).getTime();
                   
-                  if (newEmailDate < topEmailDate && prev.length > 0) {
-                      // It's an old email being discovered/updated but not for this page
+                  if (newEmailDate < bottomEmailDate && prev.length >= pageSize) {
                       return prev;
                   }
                   
-                  // Prepend newest message
-                  const next = [full, ...prev];
-                  // Keep list size bounded to pageSize
-                  // Update total count when a truly new email arrives
+                  // Prepend newest message (keep it sorted)
+                  const next = [full, ...prev.filter(e => String(e.id) !== String(full.id))]
+                    .sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime());
                   setTotalEmails(t => t + 1);
                   return next.slice(0, pageSize);
                 });
               } catch (err) {
-                console.warn('[InboxPage] Failed to fetch new email detail for id', id, err);
+                console.warn('[InboxPage] Failed to fetch email detail for id', id, err);
               }
             }
-            // No automatic navigation/scroll requested — UI updated in-place
+            loadMailboxes();
           } catch (e) {
-            console.warn('[InboxPage] Error processing NEW_EMAILS payload', e);
-            // Fallback to full refresh
-            setTimeout(() => {
-              loadMailboxes();
-              loadEmails(selectedMailbox, currentPage, pageSize, filters.unread, filters.hasAttachment);
-            }, 500);
+            console.warn('[InboxPage] Error processing notification payload', e);
+            loadMailboxes();
+            loadEmails(selectedMailbox, currentPage, pageSize, filters.unread, filters.hasAttachment);
           }
         })();
       } else {
