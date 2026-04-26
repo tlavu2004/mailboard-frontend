@@ -345,9 +345,9 @@ function InboxPageContent() {
     const normalizedMailbox = selectedMailbox?.toUpperCase();
     
     setEmails(prev => {
-      const exists = prev.some(e => e.id === draft.id || (e.gmailDraftId && e.gmailDraftId === draft.gmailDraftId));
+      const exists = prev.some(e => String(e.id) === String(draft.id) || (e.gmailDraftId && draft.gmailDraftId && e.gmailDraftId === draft.gmailDraftId));
       if (exists) {
-        return prev.map(e => (e.id === draft.id || (e.gmailDraftId && e.gmailDraftId === draft.gmailDraftId)) ? draft : e);
+        return prev.map(e => (String(e.id) === String(draft.id) || (e.gmailDraftId && draft.gmailDraftId && e.gmailDraftId === draft.gmailDraftId)) ? draft : e);
       }
       
       // If we are currently in Drafts folder, prepend it
@@ -605,60 +605,31 @@ function InboxPageContent() {
       const mailboxId = await loadMailboxes();
       if (cancelled) return;
 
-      // Try to restore last-opened email or mailbox if available in localStorage
-      const savedEmailId = (typeof window !== 'undefined') ? localStorage.getItem('mb:selectedEmailId') : null;
-      const savedPage = (typeof window !== 'undefined') ? Number(localStorage.getItem('mb:currentPage') || '1') : 1;
-      const savedMailbox = (typeof window !== 'undefined') ? localStorage.getItem('mb:selectedMailbox') : null;
+      const mailboxFromUrl = searchParams.get('mailbox');
+      const mailboxToLoad = mailboxFromUrl || initialMailbox;
 
-      if (savedEmailId) {
-        try {
-          isRestoringRef.current = true;
-          const fullEmail = await emailService.getEmailDetail(savedEmailId);
-          if (cancelled) return;
-          if (fullEmail && fullEmail.mailboxId) {
-            // Ensure mailbox matches the email we restored
-            setSelectedMailbox(fullEmail.mailboxId);
-            await loadEmails(fullEmail.mailboxId, savedPage || 1, pageSize, filters.unread, filters.hasAttachment);
-            setSelectedEmail(fullEmail);
-            setShowMobileDetail(true);
-            // Scroll the list to the restored email
-            setTimeout(() => { try { scrollToEmailInList(fullEmail.id); } catch (e) { } }, 250);
-          } else {
-            // No saved email detail could be fetched; prefer saved mailbox if present
-            const mailboxToLoad = savedMailbox || mailboxId;
-            if (mailboxToLoad) {
-              setSelectedMailbox(mailboxToLoad);
-              await loadEmails(mailboxToLoad, 1, pageSize, filters.unread, filters.hasAttachment);
-            } else {
-              console.warn('[InboxPage] init: no mailbox available to load (restore path)');
-            }
-          }
-        } catch (err) {
-          console.warn('[InboxPage] restore selected email failed:', err);
-          const mailboxToLoad = savedMailbox || mailboxId;
-          if (mailboxToLoad) {
-            setSelectedMailbox(mailboxToLoad);
-            await loadEmails(mailboxToLoad, 1, pageSize, filters.unread, filters.hasAttachment);
-          } else {
-            console.warn('[InboxPage] init: no mailbox available to load (catch path)');
-          }
-        } finally {
-          isRestoringRef.current = false;
-        }
+      if (mailboxToLoad) {
+        setSelectedMailbox(mailboxToLoad);
+        selectedMailboxRef.current = mailboxToLoad;
+        
+        // Restore page number from localStorage
+        const savedPage = (typeof window !== 'undefined') ? Number(localStorage.getItem('mb:currentPage') || '1') : 1;
+        
+        // Load only the list, do not restore selected email
+        await loadEmails(mailboxToLoad, savedPage || 1, pageSize, filters.unread, filters.hasAttachment);
       } else {
-        const mailboxToLoad = savedMailbox || mailboxId;
-        if (mailboxToLoad) {
-          setSelectedMailbox(mailboxToLoad);
-          await loadEmails(mailboxToLoad, 1, pageSize, filters.unread, filters.hasAttachment);
-        } else {
-          console.warn('[InboxPage] init: no mailbox available to load (no saved email)');
-        }
-        // restore list scroll
-        try {
-          const savedScroll = Number(localStorage.getItem('mb:listScrollTop') || '0');
-          setTimeout(() => { try { if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = savedScroll; } catch (e) { } }, 300);
-        } catch (e) { }
+        console.warn('[InboxPage] init: no mailbox available to load');
       }
+
+      // Restore list scroll position
+      try {
+        const savedScroll = Number(localStorage.getItem('mb:listScrollTop') || '0');
+        setTimeout(() => { 
+          try { 
+            if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = savedScroll; 
+          } catch (e) { } 
+        }, 300);
+      } catch (e) { }
     };
     init();
     return () => { cancelled = true; };
