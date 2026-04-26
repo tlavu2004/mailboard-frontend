@@ -680,18 +680,24 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
     }).filter(Boolean).join(', ');
   };
 
-    const [showSummary, setShowSummary] = React.useState(true);
-
-    // Sync showSummary state when email changes
-    React.useEffect(() => {
-        if (email?.summary) {
-            setShowSummary(true);
+    const [showSummary, setShowSummary] = React.useState<boolean>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('mb:showSummary');
+            return saved !== 'false'; // Default to true if not set
         }
-    }, [email?.id, email?.summary]);
+        return true;
+    });
+
+    const toggleSummary = (val: boolean) => {
+        setShowSummary(val);
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('mb:showSummary', String(val));
+        }
+    };
 
     const handleSummarizeClick = () => {
         if (!showSummary) {
-            setShowSummary(true);
+            toggleSummary(true);
         }
         
         // If no summary yet OR it's not from Gemini, trigger backend summarization
@@ -868,7 +874,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                         <Card
                             size="small"
                             title={<Space><RobotOutlined /> <Text strong>AI Summary</Text></Space>}
-                            extra={<Button type="text" size="small" onClick={() => setShowSummary(false)}>×</Button>}
+                            extra={<Button type="text" size="small" onClick={() => toggleSummary(false)}>×</Button>}
                             style={{
                                 borderLeft: email.summarySource === 'GEMINI' ? '4px solid #48bb78' : '4px solid #667eea',
                                 background: '#fcfdff'
