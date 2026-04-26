@@ -79,7 +79,7 @@ export const emailService = {
   },
 
   // Send email with optional attachments
-  // Returns server messageId when available so caller can perform optimistic UI updates
+  // Returns full email entity (mapped to DTO) so caller can perform optimistic UI updates
   sendEmail: async (
     to: string[],
     cc: string[],
@@ -88,7 +88,7 @@ export const emailService = {
     body: string,
     threadId?: string,
     attachments?: File[]
-  ): Promise<string | void> => {
+  ): Promise<Email | void> => {
     if (USE_MOCK_API) {
       // Mock implementation
       return;
@@ -111,7 +111,7 @@ export const emailService = {
         formData.append('attachments', file);
       });
 
-      const response = await apiClient.post<string>('emails/send', formData, {
+      const response = await apiClient.post<Email>('emails/send', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -119,16 +119,38 @@ export const emailService = {
       return response.data;
     } else {
       // No attachments, use JSON
-      const response = await apiClient.post<string>('emails/send', {
+      const response = await apiClient.post<Email>('emails/send', {
         to,
         cc,
         bcc,
         subject,
-        body,
-        threadId
+        bodyText: body, // Backend expects bodyText or bodyHtml
+        inReplyTo: threadId // Rename threadId to inReplyTo to match backend SendEmailRequestDto
       });
       return response.data;
     }
+  },
+
+  // Save draft
+  saveDraft: async (
+    to: string[],
+    cc: string[],
+    bcc: string[],
+    subject: string,
+    body: string,
+    gmailDraftId?: string,
+    localEmailId?: string | number
+  ): Promise<Email> => {
+    const response = await apiClient.post<Email>('emails/draft', {
+      to,
+      cc,
+      bcc,
+      subject,
+      bodyText: body,
+      gmailDraftId,
+      localEmailId
+    });
+    return response.data;
   },
 
   // Reply to email
@@ -232,5 +254,10 @@ export const emailService = {
       return;
     }
     await apiClient.post(`emails/${emailId}/refresh`);
+  },
+
+  deleteDraft: async (draftId: string, emailId?: string | number): Promise<void> => {
+    const url = `emails/draft/${draftId || 'undefined'}${emailId ? `?emailId=${emailId}` : ''}`;
+    await apiClient.delete(url);
   },
 };

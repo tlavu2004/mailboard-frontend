@@ -22,6 +22,8 @@ interface ComposeModalProps {
   visible: boolean;
   onCancel: () => void;
   onSend?: (sentPreview?: Email) => void;
+  onSaveDraft?: (draft: Email) => void;
+  onDiscard?: () => void;
   mode?: 'compose' | 'reply' | 'reply-all' | 'forward';
   currentUserEmail?: string;
   originalEmail?: {
@@ -30,16 +32,21 @@ interface ComposeModalProps {
     from: { name: string; email: string };
     to: Array<{ name: string; email: string } | string>;
     cc?: Array<{ name: string; email: string } | string>;
+    bcc?: Array<{ name: string; email: string } | string>;
     removedNoReply?: string[];
     subject: string;
     body: string;
     receivedAt: string;
+    mailboxId?: string;
+    gmailDraftId?: string;
   };
 }
 const ComposeModal: React.FC<ComposeModalProps> = ({
   visible,
   onCancel,
   onSend,
+  onSaveDraft,
+  onDiscard,
   mode = 'compose',
   currentUserEmail,
   originalEmail
@@ -58,6 +65,17 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
   const [bccInputValue, setBccInputValue] = useState('');
   const [showQuotedContent, setShowQuotedContent] = useState(false);
   const [quotedContent, setQuotedContent] = useState('');
+  const [gmailDraftId, setGmailDraftId] = useState<string | undefined>();
+  const gmailDraftIdRef = useRef<string | undefined>(undefined);
+  
+  useEffect(() => {
+    gmailDraftIdRef.current = gmailDraftId;
+  }, [gmailDraftId]);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const lastSaveContentRef = useRef<string>('');
+  const isSavingRef = useRef<boolean>(false);
+  const discardedRef = useRef<boolean>(false);
 
   const toInputRef = useRef<InputRef>(null);
   const ccInputRef = useRef<InputRef>(null);
@@ -222,6 +240,26 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
         }
         const originalBodyText = htmlToPlainText(originalEmail.body);
         quoted = `---------- Forwarded message ---------\nFrom: ${originalEmail.from.name || originalEmail.from.email}\nDate: ${parseAsLocalDate(originalEmail.receivedAt).toLocaleString()}\nSubject: ${originalEmail.subject}\n\n${originalBodyText}`;
+      } else if (mode === 'compose' && (originalEmail.mailboxId?.toUpperCase() === 'DRAFTS' || originalEmail.mailboxId?.toUpperCase() === 'DRAFT')) {
+        // Editing an existing draft
+        toRecipients = normalizeRecipients(originalEmail.to || []);
+        ccRecipients = normalizeRecipients(originalEmail.cc || []);
+        const bccRecipients = normalizeRecipients(originalEmail.bcc || []);
+        setBccEmails(bccRecipients);
+        setShowBcc(bccRecipients.length > 0);
+        setGmailDraftId(originalEmail.gmailDraftId);
+        
+        const cleanBody = htmlToPlainText(originalEmail.body || '');
+        form.setFieldsValue({
+            subject: originalEmail.subject,
+            body: cleanBody,
+        });
+        lastSaveContentRef.current = cleanBody;
+        
+        setToEmails(toRecipients);
+        setCcEmails(ccRecipients);
+        setShowCc(ccRecipients.length > 0);
+        return; // Skip the default sets below
       }
 
       setToEmails(toRecipients);
@@ -248,8 +286,63 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
       setShowBcc(false);
       setQuotedContent('');
       setShowQuotedContent(false);
+      setGmailDraftId(undefined);
+      setLastSavedAt(null);
+      lastSaveContentRef.current = '';
+      discardedRef.current = false;
+      isSavingRef.current = false;
     }
   }, [visible, mode, originalEmail, form, currentUserEmail]);
+
+  // Auto-save draft effect
+  useEffect(() => {
+    if (!visible || loading) return;
+
+    const timer = setInterval(() => {
+      handleAutoSave();
+    }, 10000); // Auto-save every 10 seconds
+
+    return () => clearInterval(timer);
+  }, [visible, loading, toEmails, ccEmails, bccEmails, gmailDraftId]);
+
+  const handleAutoSave = async () => {
+    if (isSavingRef.current || discardedRef.current) return;
+    
+    const values = form.getFieldsValue();
+    const currentContent = `${toEmails.join(',')}|${ccEmails.join(',')}|${bccEmails.join(',')}|${values.subject}|${values.body}`;
+    
+    // Don't save if nothing changed or if basic fields are empty
+    if (currentContent === lastSaveContentRef.current) return;
+    if (!values.subject && !values.body && toEmails.length === 0) return;
+
+    setIsSaving(true);
+    isSavingRef.current = true;
+    try {
+      const draft = await emailService.saveDraft(
+        toEmails,
+        ccEmails,
+        bccEmails,
+        values.subject || '',
+        values.body || '',
+        gmailDraftIdRef.current,
+        originalEmail?.id
+      );
+      
+      if (draft.gmailDraftId) {
+        setGmailDraftId(draft.gmailDraftId);
+      }
+      if (onSaveDraft) {
+        onSaveDraft(draft);
+      }
+      setLastSavedAt(new Date());
+      lastSaveContentRef.current = currentContent;
+    } catch (error) {
+      console.error('Failed to auto-save draft:', error);
+    } finally {
+      setIsSaving(false);
+      isSavingRef.current = false;
+    }
+  };
 
 
 
@@ -337,6 +430,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
     }
 
     setLoading(true);
+    discardedRef.current = true; // Stop auto-save while sending
     try {
       // Combine user body with quoted content for final email
       let finalBody = values.body || '';
@@ -349,10 +443,9 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
         .filter(f => f.originFileObj)
         .map(f => f.originFileObj as File);
 
-      // Pass the original message's Message-ID as the in-reply-to value when available.
-      // Fallback to threadId if messageId is not present.
+      // Message-ID of the email being replied to (for threading)
       const inReplyTo = (originalEmail as any)?.messageId || originalEmail?.threadId;
-      const messageId = await emailService.sendEmail(
+      const sentEmail = await emailService.sendEmail(
         finalTo,
         finalCc,
         finalBcc,
@@ -371,40 +464,14 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
       setShowBcc(false);
       setQuotedContent('');
       setShowQuotedContent(false);
-      // Build an optimistic Sent preview to insert into Sent view without forcing a full reload.
-      try {
-        const nowIso = new Date().toISOString();
-        const tempId = messageId || `temp-${Date.now()}`;
-        const mapAddr = (addr: string) => ({ name: '', email: addr });
-        const sentPreview: Email = {
-          id: String(tempId),
-          messageId: messageId || undefined,
-          threadId: originalEmail?.threadId,
-          gmailMessageId: undefined,
-          gmailLink: undefined,
-          accountEmail: currentUserEmail || undefined,
-          mailboxId: 'SENT',
-          from: { name: '', email: currentUserEmail || '' },
-          to: finalTo.map(mapAddr),
-          cc: finalCc.map(mapAddr),
-          bcc: finalBcc.map(mapAddr),
-          subject: values.subject,
-          preview: (finalBody || '').slice(0, 160),
-          body: finalBody,
-          isRead: true,
-          isStarred: false,
-          hasAttachments: attachments.length > 0,
-          hasCloudLinks: false,
-          hasPhysicalAttachments: false,
-          attachments: attachments.map((f, i) => ({ id: `temp-${i}-${f.name}`, filename: f.name, size: f.size, mimeType: f.type, url: '' } as Attachment)),
-          receivedAt: nowIso,
-          createdAt: nowIso,
-        };
-
-        onSend?.(sentPreview);
-      } catch (err) {
-        // If anything goes wrong building preview, still call onSend without preview so parent can fallback
-        onSend?.();
+      setGmailDraftId(undefined);
+      setLastSavedAt(null);
+      
+      // Pass the actual sent email entity back to parent for UI update
+      if (sentEmail && typeof sentEmail === 'object') {
+         onSend?.(sentEmail);
+      } else {
+         onSend?.();
       }
     } catch (error) {
       message.error('Failed to send email');
@@ -475,7 +542,13 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
     <Modal
       title={getModalTitle()}
       open={visible}
-      onCancel={onCancel}
+      onCancel={async () => {
+        // Auto-save before closing via 'X' button
+        if (!discardedRef.current) {
+          await handleAutoSave();
+        }
+        onCancel();
+      }}
       footer={null}
       destroyOnHidden
       width={700}
@@ -852,7 +925,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
           alignItems: 'center',
           background: '#fafafa'
         }}>
-          <Space>
+          <Space size="middle">
             <Button
               type="primary"
               htmlType="submit"
@@ -871,10 +944,42 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
                 Attach
               </Button>
             </Upload>
+            {(isSaving || lastSavedAt) && (
+              <Text type="secondary" style={{ fontSize: '12px', marginLeft: '8px' }}>
+                {isSaving ? 'Đang lưu...' : `Bản nháp đã lưu lúc ${lastSavedAt?.toLocaleTimeString()}`}
+              </Text>
+            )}
           </Space>
-          <Button onClick={onCancel}>
-            Cancel
-          </Button>
+          <Space>
+            { (gmailDraftId || originalEmail?.id) && (
+              <Button 
+                  danger 
+                  onClick={async () => {
+                      // Discard means we delete the draft from Gmail if it was saved, and always from local DB
+                      discardedRef.current = true; // Stop auto-save immediately
+                      const draftId = gmailDraftIdRef.current;
+                      const emailId = originalEmail?.id;
+                      
+                      if (draftId || emailId) {
+                          try {
+                              setLoading(true);
+                              await emailService.deleteDraft(draftId || 'undefined', emailId);
+                              message.success('Draft discarded');
+                              onDiscard?.();
+                          } catch (err) {
+                              console.error('Failed to discard draft:', err);
+                          } finally {
+                              setLoading(false);
+                          }
+                      }
+                      onCancel();
+                  }} 
+                  disabled={loading}
+              >
+                Discard
+              </Button>
+            )}
+          </Space>
         </div>
       </Form>
     </Modal>

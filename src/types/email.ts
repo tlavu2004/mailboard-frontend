@@ -29,6 +29,7 @@ export interface Email {
   messageId?: string;
   threadId?: string;
   gmailMessageId?: string;
+  gmailDraftId?: string;
   gmailLink?: string;
   accountEmail?: string;
   mailboxId: string;

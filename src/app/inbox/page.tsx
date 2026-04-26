@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { flushSync } from 'react-dom';
 import { Layout, Menu, List, Card, Button, Typography, Space, Avatar, Spin, message, Empty, Modal, Pagination, Dropdown, Drawer, notification, Alert } from 'antd';
 import EmailDetail from '@/app/components/EmailDetail';
@@ -81,9 +82,41 @@ const parseAsLocalDate = (value?: string): Date => {
 };
 
 export default function InboxPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex justify-center items-center h-screen">
+        <Spin size="large" tip="Loading MailBoard..." />
+      </div>
+    }>
+      <InboxPageContent />
+    </Suspense>
+  );
+}
+
+function InboxPageContent() {
   const { user, logout } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const initialMailbox = searchParams.get('mailbox') || 'INBOX';
+
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([]);
-  const [selectedMailbox, setSelectedMailbox] = useState<string>('');
+  const [selectedMailbox, setSelectedMailbox] = useState<string>(initialMailbox);
+  const selectedMailboxRef = useRef<string>(initialMailbox);
+  
+  // Sync ref with state
+  useEffect(() => {
+    selectedMailboxRef.current = selectedMailbox;
+  }, [selectedMailbox]);
+
+  // Sync state with URL
+  useEffect(() => {
+    const mailboxParam = searchParams.get('mailbox');
+    if (mailboxParam && mailboxParam !== selectedMailbox) {
+      setSelectedMailbox(mailboxParam);
+    }
+  }, [searchParams]);
+
   const [emails, setEmails] = useState<Email[]>([]);
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [emailsLoading, setEmailsLoading] = useState(false);
@@ -268,28 +301,60 @@ export default function InboxPage() {
     setComposeMode('compose');
     setReplyToEmail(null);
 
-    // Optimistic Sent insertion: if user is viewing Sent mailbox we try to update UI without a full reload
-    if (selectedMailbox === 'SENT') {
-      // Always increment total emails so pagination stays consistent
-      setTotalEmails(prev => prev + 1);
+    if (!sentPreview) return;
 
-      if (sentPreview) {
-        if (currentPage === 1) {
-          setEmails(prev => {
-            const exists = prev.some(e => e.id === sentPreview.id);
-            if (exists) {
-              return prev.map(e => e.id === sentPreview.id ? sentPreview : e);
-            }
-            const next = [sentPreview, ...prev];
-            return next.slice(0, pageSize);
-          });
-        } else {
-          // If not on first page, avoid mutating the visible list — user likely wants to stay on the current page.
-          // We simply update totals and let background sync/notifications add the item when user navigates to page 1.
-        }
-      } else {
-        // No preview available: we still avoid forcing a full reload to keep UX stable.
+    // Optimistic UI updates
+    const normalizedMailbox = selectedMailbox?.toUpperCase();
+    const previewMailbox = sentPreview.mailboxId?.toUpperCase();
+
+    // 1. If we are currently viewing the mailbox this email belongs to (SENT or DRAFTS), update the list
+    if (normalizedMailbox === previewMailbox || (normalizedMailbox === 'DRAFT' && previewMailbox === 'DRAFTS')) {
+      if (currentPage === 1) {
+        setEmails(prev => {
+          const exists = prev.some(e => e.id === sentPreview.id || (e.gmailDraftId && e.gmailDraftId === sentPreview.gmailDraftId));
+          if (exists) {
+            return prev.map(e => (e.id === sentPreview.id || (e.gmailDraftId && e.gmailDraftId === sentPreview.gmailDraftId)) ? sentPreview : e);
+          }
+          const next = [sentPreview, ...prev];
+          return next.slice(0, pageSize);
+        });
+        setTotalEmails(prev => prev + 1);
       }
+    }
+
+    // 2. If we just sent an email and we are in DRAFTS, remove the draft if it was sent
+    if ((normalizedMailbox === 'DRAFTS' || normalizedMailbox === 'DRAFT') && previewMailbox === 'SENT') {
+       setEmails(prev => prev.filter(e => e.gmailDraftId !== sentPreview.gmailDraftId));
+       setTotalEmails(prev => Math.max(0, prev - 1));
+    }
+  };
+
+  const handleDraftUpdate = (draft: Email) => {
+    const normalizedMailbox = selectedMailbox?.toUpperCase();
+    
+    setEmails(prev => {
+      const exists = prev.some(e => e.id === draft.id || (e.gmailDraftId && e.gmailDraftId === draft.gmailDraftId));
+      if (exists) {
+        return prev.map(e => (e.id === draft.id || (e.gmailDraftId && e.gmailDraftId === draft.gmailDraftId)) ? draft : e);
+      }
+      
+      // If we are currently in Drafts folder, prepend it
+      if (normalizedMailbox === 'DRAFTS' || normalizedMailbox === 'DRAFT') {
+        const next = [draft, ...prev];
+        return next.slice(0, pageSize);
+      }
+      
+      return prev;
+    });
+    
+    // Update total count if it's a new draft in this view
+    if (normalizedMailbox === 'DRAFTS' || normalizedMailbox === 'DRAFT') {
+        setMailboxes(prev => prev.map(m => {
+            if (m.id.toUpperCase() === 'DRAFTS' || m.id.toUpperCase() === 'DRAFT') {
+                return { ...m, unreadCount: (m.unreadCount || 0) + 1 }; // Or just refresh mailbox list
+            }
+            return m;
+        }));
     }
   };
 
@@ -450,6 +515,10 @@ export default function InboxPage() {
     }
 
     console.log('[InboxPage] loadEmails: loading', mailboxId, 'page', page, 'sort', finalSortBy, finalSortOrder);
+    if (mailboxId !== selectedMailboxRef.current) {
+      console.log('[InboxPage] loadEmails ignored: mailbox mismatch', { requested: mailboxId, current: selectedMailboxRef.current });
+      return;
+    }
     setEmailsLoading(true);
     try {
       let data = await emailService.getEmails(
@@ -467,6 +536,11 @@ export default function InboxPage() {
       if (data && (data as any).success !== undefined && (data as any).data !== undefined) {
         console.log('[InboxPage] loadEmails: unwrapping nested ApiResponse');
         data = (data as any).data;
+      }
+
+      if (mailboxId !== selectedMailboxRef.current) {
+        console.log('[InboxPage] loadEmails aborted: user switched mailbox during fetch');
+        return;
       }
 
       const emailList = data.emails || [];
@@ -634,6 +708,17 @@ export default function InboxPage() {
     setSelectedMailbox(mailboxId);
     setCurrentPage(1); // Reset to page 1 when switching mailbox
     setShowMobileDetail(false);
+
+    // Persist mailbox to URL
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('mailbox', mailboxId);
+    router.push(`${pathname}?${params.toString()}`);
+
+    // V10.50: Automatically trigger sync for system folders when selected
+    const systemFolders = ['INBOX', 'TRASH', 'SPAM', 'SENT', 'DRAFTS', 'DRAFT'];
+    if (systemFolders.includes(mailboxId.toUpperCase())) {
+      handleSync(mailboxId);
+    }
   };
 
   // Persist mailbox selection to restore on reload
@@ -644,6 +729,15 @@ export default function InboxPage() {
   }, [selectedMailbox]);
 
   const handleEmailSelect = async (email: Email) => {
+    // If it's a draft, open Compose Modal for editing instead of reading
+    const isDraft = (email.mailboxId || '').toUpperCase() === 'DRAFTS' || (email.mailboxId || '').toUpperCase() === 'DRAFT';
+    if (isDraft) {
+      setReplyToEmail(email);
+      setComposeMode('compose');
+      setIsComposeVisible(true);
+      return;
+    }
+
     setSelectedEmail(email);
     setShowMobileDetail(true);
     try { localStorage.setItem('mb:selectedEmailId', String(email.id)); } catch (e) { }
@@ -688,7 +782,7 @@ export default function InboxPage() {
     message.success('Refreshed');
   };
 
-  const handleSync = async () => {
+  const handleSync = async (mailboxId?: string) => {
     setSyncLoading(true);
     try {
       const folderMap: Record<string, string> = {
@@ -698,8 +792,11 @@ export default function InboxPage() {
         SENT: '[Gmail]/Sent Mail',
         DRAFT: '[Gmail]/Drafts',
         DRAFTS: '[Gmail]/Drafts',
+        IMPORTANT: '[Gmail]/Important',
+        STARRED: '[Gmail]/Starred',
       };
-      const syncFolder = folderMap[(selectedMailbox || 'INBOX').toUpperCase()] || selectedMailbox || 'INBOX';
+      const normalized = (mailboxId || selectedMailbox || 'INBOX').toUpperCase();
+      const syncFolder = folderMap[normalized] || mailboxId || selectedMailbox || 'INBOX';
       await emailService.syncEmails(undefined, syncFolder);
       message.success('Sync completed. Refreshing emails...');
       await loadEmails(selectedMailbox);
@@ -1645,6 +1742,8 @@ export default function InboxPage() {
             visible={isComposeVisible}
             onCancel={handleComposeClose}
             onSend={handleComposeSend}
+            onSaveDraft={handleDraftUpdate}
+            onDiscard={() => loadEmails(selectedMailbox)}
             mode={composeMode}
             currentUserEmail={replyToEmail?.accountEmail || user?.email}
             originalEmail={replyToEmail ? {
@@ -1653,10 +1752,13 @@ export default function InboxPage() {
               from: replyToEmail.from,
               to: replyToEmail.to,
               cc: replyToEmail.cc,
+              bcc: replyToEmail.bcc,
               subject: replyToEmail.subject,
               body: replyToEmail.body,
               receivedAt: replyToEmail.receivedAt,
-              removedNoReply: (replyToEmail as any).removedNoReply || []
+              removedNoReply: (replyToEmail as any).removedNoReply || [],
+              mailboxId: replyToEmail.mailboxId,
+              gmailDraftId: replyToEmail.gmailDraftId
             } : undefined}
           />
           <KeyboardHelpModal
