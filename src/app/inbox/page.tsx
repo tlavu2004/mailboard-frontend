@@ -322,10 +322,22 @@ function InboxPageContent() {
       }
     }
 
-    // 2. If we just sent an email and we are in DRAFTS, remove the draft if it was sent
-    if ((normalizedMailbox === 'DRAFTS' || normalizedMailbox === 'DRAFT') && previewMailbox === 'SENT') {
-       setEmails(prev => prev.filter(e => e.gmailDraftId !== sentPreview.gmailDraftId));
-       setTotalEmails(prev => Math.max(0, prev - 1));
+    // 2. If we just sent an email and we are in DRAFTS, we must remove the draft and refresh
+    if (normalizedMailbox === 'DRAFTS' || normalizedMailbox === 'DRAFT') {
+       // Filter out by either ID or gmailDraftId
+       setEmails(prev => prev.filter(e => {
+         const isSameId = e.id === sentPreview.id;
+         const isSameDraftId = sentPreview.gmailDraftId && e.gmailDraftId === sentPreview.gmailDraftId;
+         return !isSameId && !isSameDraftId;
+       }));
+       
+       // Force a refresh from server to be 100% sure
+       setTimeout(() => loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment, undefined, undefined, true), 500);
+    }
+    
+    // 3. If we are in SENT, refresh to see the new mail
+    if (normalizedMailbox === 'SENT') {
+       loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment, undefined, undefined, true);
     }
   };
 
@@ -497,7 +509,8 @@ function InboxPageContent() {
     unread?: boolean,
     hasAttachments?: boolean,
     sortByParam?: string,
-    sortOrderParam?: string
+    sortOrderParam?: string,
+    forceRefresh: boolean = false
   ) => {
     if (!mailboxId) {
       console.warn('[InboxPage] loadEmails: skipped, no mailboxId');
@@ -514,8 +527,8 @@ function InboxPageContent() {
       finalSortOrder = parts[1] || 'desc';
     }
 
-    console.log('[InboxPage] loadEmails: loading', mailboxId, 'page', page, 'sort', finalSortBy, finalSortOrder);
-    if (mailboxId !== selectedMailboxRef.current) {
+    console.log('[InboxPage] loadEmails: loading', mailboxId, 'page', page, 'sort', finalSortBy, finalSortOrder, 'force=', forceRefresh);
+    if (!forceRefresh && mailboxId !== selectedMailboxRef.current) {
       console.log('[InboxPage] loadEmails ignored: mailbox mismatch', { requested: mailboxId, current: selectedMailboxRef.current });
       return;
     }

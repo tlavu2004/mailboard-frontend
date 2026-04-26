@@ -87,7 +87,9 @@ export const emailService = {
     subject: string,
     body: string,
     threadId?: string,
-    attachments?: File[]
+    attachments?: File[],
+    gmailDraftId?: string,
+    localEmailId?: number
   ): Promise<Email | void> => {
     if (USE_MOCK_API) {
       // Mock implementation
@@ -102,33 +104,34 @@ export const emailService = {
       formData.append('bcc', JSON.stringify(bcc));
       formData.append('subject', subject);
       formData.append('body', body);
-      if (threadId) {
-        formData.append('threadId', threadId);
-      }
-
-      // Add each file
-      attachments.forEach((file) => {
+      if (threadId) formData.append('threadId', threadId);
+      if (gmailDraftId) formData.append('gmailDraftId', gmailDraftId);
+      if (localEmailId) formData.append('localEmailId', localEmailId.toString());
+      
+      attachments.forEach(file => {
         formData.append('attachments', file);
       });
 
-      const response = await apiClient.post<Email>('emails/send', formData, {
+      const response = await apiClient.post<any>('emails/send', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
       return response.data;
-    } else {
-      // No attachments, use JSON
-      const response = await apiClient.post<Email>('emails/send', {
-        to,
-        cc,
-        bcc,
-        subject,
-        bodyText: body, // Backend expects bodyText or bodyHtml
-        inReplyTo: threadId // Rename threadId to inReplyTo to match backend SendEmailRequestDto
-      });
-      return response.data;
     }
+
+    // Simple JSON request
+    const response = await apiClient.post<any>('emails/send', {
+      to,
+      cc,
+      bcc,
+      subject,
+      bodyText: body,
+      inReplyTo: threadId,
+      gmailDraftId,
+      localEmailId
+    });
+    return response.data;
   },
 
   // Save draft

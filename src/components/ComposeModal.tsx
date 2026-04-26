@@ -76,6 +76,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
   const lastSaveContentRef = useRef<string>('');
   const isSavingRef = useRef<boolean>(false);
   const discardedRef = useRef<boolean>(false);
+  const hasInitializedRef = useRef<boolean>(false);
 
   const toInputRef = useRef<InputRef>(null);
   const ccInputRef = useRef<InputRef>(null);
@@ -148,7 +149,8 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
 
   // Initialize form when modal opens
   useEffect(() => {
-    if (visible && originalEmail) {
+    if (visible && originalEmail && !hasInitializedRef.current) {
+      hasInitializedRef.current = true;
       let subject = originalEmail.subject;
       let toRecipients: string[] = [];
       let ccRecipients: string[] = [];
@@ -259,6 +261,8 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
         setToEmails(toRecipients);
         setCcEmails(ccRecipients);
         setShowCc(ccRecipients.length > 0);
+        discardedRef.current = false;
+        isSavingRef.current = false;
         return; // Skip the default sets below
       }
 
@@ -275,24 +279,31 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
         subject,
         body: '', // User starts with empty body
       });
-    } else if (visible) {
-      // Reset for new compose
-      form.resetFields();
-      setToEmails([]);
-      setCcEmails([]);
-      setBccEmails([]);
-      setFileList([]);
-      setShowCc(false);
-      setShowBcc(false);
-      setQuotedContent('');
-      setShowQuotedContent(false);
-      setGmailDraftId(undefined);
-      setLastSavedAt(null);
-      lastSaveContentRef.current = '';
       discardedRef.current = false;
       isSavingRef.current = false;
+      lastSaveContentRef.current = '';
+    } else if (visible && !originalEmail && !hasInitializedRef.current) {
+        // New compose
+        hasInitializedRef.current = true;
+        form.resetFields();
+        setToEmails([]);
+        setCcEmails([]);
+        setBccEmails([]);
+        setFileList([]);
+        setShowCc(false);
+        setShowBcc(false);
+        setQuotedContent('');
+        setShowQuotedContent(false);
+        setGmailDraftId(undefined);
+        setLastSavedAt(null);
+        lastSaveContentRef.current = '';
+        discardedRef.current = false;
+        isSavingRef.current = false;
+    } else if (!visible) {
+      // Reset initialization flag when modal closes
+      hasInitializedRef.current = false;
     }
-  }, [visible, mode, originalEmail, form, currentUserEmail]);
+  }, [visible, originalEmail, form, currentUserEmail, mode]);
 
   // Auto-save draft effect
   useEffect(() => {
@@ -452,7 +463,9 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
         values.subject,
         finalBody,
         inReplyTo,
-        attachments.length > 0 ? attachments : undefined
+        attachments.length > 0 ? attachments : undefined,
+        gmailDraftIdRef.current,
+        originalEmail?.id ? Number(originalEmail.id) : undefined
       );
       message.success('Email sent successfully');
       form.resetFields();
