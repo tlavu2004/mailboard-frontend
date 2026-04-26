@@ -337,19 +337,24 @@ function InboxPageContent() {
     
     // 3. If we are in SENT, refresh to see the new mail
     if (normalizedMailbox === 'SENT') {
-       loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment, undefined, undefined, true);
-    }
-  };
+        loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment, undefined, undefined, true);
+     }
+
+     // 4. Always refresh mailbox counts to reflect decremented Drafts and incremented Sent
+     loadMailboxes();
+   };
 
   const handleDraftUpdate = (draft: Email) => {
     const normalizedMailbox = selectedMailbox?.toUpperCase();
-    
+    let wasNew = false;
+
     setEmails(prev => {
       const exists = prev.some(e => String(e.id) === String(draft.id) || (e.gmailDraftId && draft.gmailDraftId && e.gmailDraftId === draft.gmailDraftId));
       if (exists) {
         return prev.map(e => (String(e.id) === String(draft.id) || (e.gmailDraftId && draft.gmailDraftId && e.gmailDraftId === draft.gmailDraftId)) ? draft : e);
       }
       
+      wasNew = true;
       // If we are currently in Drafts folder, prepend it
       if (normalizedMailbox === 'DRAFTS' || normalizedMailbox === 'DRAFT') {
         const next = [draft, ...prev];
@@ -359,14 +364,9 @@ function InboxPageContent() {
       return prev;
     });
     
-    // Update total count if it's a new draft in this view
-    if (normalizedMailbox === 'DRAFTS' || normalizedMailbox === 'DRAFT') {
-        setMailboxes(prev => prev.map(m => {
-            if (m.id.toUpperCase() === 'DRAFTS' || m.id.toUpperCase() === 'DRAFT') {
-                return { ...m, unreadCount: (m.unreadCount || 0) + 1 }; // Or just refresh mailbox list
-            }
-            return m;
-        }));
+    // Update total count if it's a new draft
+    if (wasNew) {
+        loadMailboxes(); // Refresh accurate counts from server
     }
   };
 
