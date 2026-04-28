@@ -854,84 +854,103 @@ function InboxPageContent() {
   // real-time notifications
   const handleNotification = useCallback((msg: any) => {
     console.log('[InboxPage] WebSocket notification received:', msg);
+    
     if (msg?.type === 'NEW_EMAILS' || msg?.type === 'UPDATED_EMAILS') {
-      const isUpdateOnly = msg.type === 'UPDATED_EMAILS';
-      const canInsertRealtimeIntoCurrentList =
-        selectedMailbox === 'INBOX' &&
-        currentPage === 1 &&
-        !isSearching &&
-        sortMode === 'date-desc' &&
-        !filters.unread &&
-        !filters.hasAttachment;
+      const emailIds = msg.emailIds || (msg.emailId ? [msg.emailId] : []);
+      if (emailIds.length === 0) return;
 
-      // If backend provided specific email IDs, fetch them and insert into UI immediately
-      if (Array.isArray(msg.emailIds) && msg.emailIds.length > 0) {
-        (async () => {
-          try {
-            for (const id of msg.emailIds) {
-              try {
-                const full = await emailService.getEmailDetail(String(id));
-                setEmails(prev => {
-                  const belongsInView = 
-                    (full.mailboxId || '').toUpperCase() === (selectedMailbox || 'INBOX').toUpperCase() ||
-                    ((full.mailboxId || '').toUpperCase() === 'INBOX' && selectedMailbox === 'INBOX');
-                    
-                  // ALWAYS process removals/updates for existing items to keep view fresh
-                  const exists = prev.some(e => String(e.id) === String(full.id));
-                  if (exists) {
-                    if (!belongsInView) {
-                       // If the email being read is the one being removed, close the reading panel
-                       setSelectedEmail(current => {
-                         if (current && String(current.id) === String(full.id)) {
-                           return null;
-                         }
-                         return current;
-                       });
-                       return prev.filter(e => String(e.id) !== String(full.id));
-                    }
-                    // Replace existing entry with fresh data
-                    return prev.map(e => String(e.id) === String(full.id) ? full : e);
-                  }
-                  
-                  // NEW EMAIL (not in current view list)
-                  // We allow 'isUpdateOnly' here because a status change (e.g. Restore from Trash) 
-                  // makes an old email "new" to the current Inbox view.
-                  if (!belongsInView || !canInsertRealtimeIntoCurrentList) return prev;
+      const isInbox = (selectedMailbox || 'INBOX').toUpperCase() === 'INBOX';
+      
+      (async () => {
+        try {
+          let newEmailsForTotal = 0;
+          for (const id of emailIds) {
+            try {
+              const full = await emailService.getEmailDetail(String(id));
+              
+              // 1. Always update mailbox counts
+              loadMailboxes();
 
-                  // Safety: Only prepend if it's actually newer than the bottom-most email in the current view
-                  // or if the list isn't full yet.
-                  const bottomEmailDate = prev.length > 0 ? new Date(prev[prev.length - 1].receivedAt).getTime() : 0;
-                  const newEmailDate = new Date(full.receivedAt).getTime();
-                  
-                  if (newEmailDate < bottomEmailDate && prev.length >= pageSize) {
-                      return prev;
-                  }
-                  
-                  // Prepend newest message (keep it sorted)
-                  const next = [full, ...prev.filter(e => String(e.id) !== String(full.id))]
-                    .sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime());
-                  setTotalEmails(t => t + 1);
-                  return next.slice(0, pageSize);
-                });
-              } catch (err) {
-                console.warn('[InboxPage] Failed to fetch email detail for id', id, err);
+              // 2. Decide if we should notify and update total
+              const isNewForInbox = 
+                (full.mailboxId || '').toUpperCase() === 'INBOX' && 
+                msg.type === 'NEW_EMAILS';
+              
+              if (isNewForInbox) {
+                newEmailsForTotal++;
               }
+
+              // 3. Update the visible list if appropriate (Option 2 logic)
+              setEmails(prev => {
+                const belongsInView = 
+                  (full.mailboxId || '').toUpperCase() === (selectedMailbox || 'INBOX').toUpperCase() ||
+                  ((full.mailboxId || '').toUpperCase() === 'INBOX' && isInbox);
+                  
+                const exists = prev.some(e => String(e.id) === String(full.id));
+                
+                if (exists) {
+                  if (!belongsInView) return prev.filter(e => String(e.id) !== String(full.id));
+                  return prev.map(e => String(e.id) === String(full.id) ? full : e);
+                }
+                
+                // If not in current view or searching, don't insert into list
+                if (!belongsInView || isSearching) return prev;
+
+                // CRITICAL FIX: Re-verify filters for the new email before inserting into visible list
+                if (filters.unread && full.isRead) return prev;
+                if (filters.hasAttachment && !full.hasAttachments) return prev;
+
+                // Sort-aware insertion
+                const next = [full, ...prev.filter(e => String(e.id) !== String(full.id))];
+                next.sort((a, b) => {
+                  const [field, order] = sortMode.split('-');
+                  const isAsc = order === 'asc';
+                  if (field === 'date') {
+                    return isAsc ? new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime() : new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime();
+                  }
+                  if (field === 'sender') {
+                    const sA = (a.from?.name || a.from?.email || '').toLowerCase();
+                    const sB = (b.from?.name || b.from?.email || '').toLowerCase();
+                    return isAsc ? sA.localeCompare(sB) : sB.localeCompare(sA);
+                  }
+                  return 0;
+                });
+
+                // Option 2: Only keep it if it falls within the current page's slice
+                // Since we don't have full context of other pages, we can only safely do this for Page 1
+                // or if the list is smaller than the page size.
+                if (currentPage === 1 || prev.length < pageSize) {
+                   const result = next.slice(0, pageSize);
+                   // Check if 'full' is actually in the result
+                   const isVisible = result.some(e => String(e.id) === String(full.id));
+                   if (isVisible) {
+                     console.log('[InboxPage] Email inserted into visible list:', full.subject);
+                   }
+                   return result;
+                }
+                
+                return prev;
+              });
+            } catch (err) {
+              console.warn('[InboxPage] Failed to process email id', id, err);
             }
-            loadMailboxes();
-          } catch (e) {
-            console.warn('[InboxPage] Error processing notification payload', e);
-            loadMailboxes();
-            loadEmails(selectedMailbox, currentPage, pageSize, filters.unread, filters.hasAttachment);
           }
-        })();
-      } else {
-        // Generic fallback: refresh mailbox list and current mailbox view
-        message.info('New emails received! Syncing...');
-        setTimeout(() => {
+          
+          if (newEmailsForTotal > 0) {
+            notification.success({
+              message: 'New Email Received',
+              description: `You have ${newEmailsForTotal} new email(s) in your inbox.`,
+              placement: 'bottomRight',
+              duration: 4
+            });
+            setTotalEmails(t => t + newEmailsForTotal);
+          }
+        } catch (e) {
+          console.warn('[InboxPage] Error in notification loop', e);
           loadMailboxes();
           loadEmails(selectedMailbox, currentPage, pageSize, filters.unread, filters.hasAttachment);
-        }, 500);
-      }
+        }
+      })();
     }
   }, [selectedMailbox, loadMailboxes, loadEmails, currentPage, pageSize, filters, isSearching, sortMode]);
 

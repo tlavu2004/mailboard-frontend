@@ -6,15 +6,15 @@ import { ConfigProvider } from 'antd';
 import OfflineIndicator from "@/components/OfflineIndicator";
 import "./globals.css";
 
-const geistSans = Geist({
+// Remove Google Font dependency to avoid build errors in environments with restricted internet
+// We will use a high-quality system font stack instead
+const geistSans = {
   variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+};
 
-const geistMono = Geist_Mono({
+const geistMono = {
   variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+};
 
 export const viewport: Viewport = {
   themeColor: '#667eea',
@@ -95,7 +95,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className="antialiased"
       >
         <AntdRegistry>
           <ConfigProvider
