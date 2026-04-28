@@ -183,11 +183,27 @@ function InboxPageContent() {
   const [syncLoading, setSyncLoading] = useState(false);
 
   // Filter & Sort state
-  const [filters, setFilters] = useState<FilterState>({
-    unread: false,
-    hasAttachment: false,
+  const [filters, setFilters] = useState<FilterState>(() => {
+    if (typeof window === 'undefined') return { unread: false, hasAttachment: false };
+    try {
+      const saved = localStorage.getItem('mb:filters');
+      return saved ? JSON.parse(saved) : { unread: false, hasAttachment: false };
+    } catch (e) {
+      return { unread: false, hasAttachment: false };
+    }
   });
-  const [sortMode, setSortMode] = useState<SortMode>('date-desc');
+  const [sortMode, setSortMode] = useState<SortMode>(() => {
+    if (typeof window === 'undefined') return 'date-desc';
+    return (localStorage.getItem('mb:sortMode') as SortMode) || 'date-desc';
+  });
+
+  // Persist filters & sort state
+  useEffect(() => {
+    try {
+      localStorage.setItem('mb:filters', JSON.stringify(filters));
+      localStorage.setItem('mb:sortMode', sortMode);
+    } catch (e) {}
+  }, [filters, sortMode]);
   const [activeIndex, setActiveIndex] = useState<number>(-1);
   const [isKeyboardHelpVisible, setIsKeyboardHelpVisible] = useState(false);
 
@@ -615,11 +631,22 @@ function InboxPageContent() {
         setSelectedMailbox(mailboxToLoad);
         selectedMailboxRef.current = mailboxToLoad;
         
-        // Restore page number from localStorage
+        // Restore page number and filters from localStorage
         const savedPage = (typeof window !== 'undefined') ? Number(localStorage.getItem('mb:currentPage') || '1') : 1;
+        const savedFiltersStr = (typeof window !== 'undefined') ? localStorage.getItem('mb:filters') : null;
+        const savedFilters = savedFiltersStr ? JSON.parse(savedFiltersStr) : filters;
+        const savedSortMode = (typeof window !== 'undefined') ? (localStorage.getItem('mb:sortMode') as SortMode) : sortMode;
         
-        // Load only the list, do not restore selected email
-        await loadEmails(mailboxToLoad, savedPage || 1, pageSize, filters.unread, filters.hasAttachment);
+        // Load with restored state
+        await loadEmails(
+          mailboxToLoad, 
+          savedPage || 1, 
+          pageSize, 
+          savedFilters.unread, 
+          savedFilters.hasAttachment,
+          savedSortMode?.split('-')[0],
+          savedSortMode?.split('-')[1]
+        );
       } else {
         console.warn('[InboxPage] init: no mailbox available to load');
       }
