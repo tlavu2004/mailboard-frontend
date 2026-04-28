@@ -30,7 +30,7 @@ import KanbanSettingsModal from './KanbanSettingsModal';
 import AddColumnButton from '../AddColumnButton';
 
 import { useEmailNotifications } from '@/hooks/useEmailNotifications';
-import { FilterState, SortMode } from '../FilterBar';
+import { FilterState } from '../FilterBar';
 
 export interface ColumnWithMeta extends ColMeta {
   id: string; // Database ID for sortable items
@@ -39,7 +39,8 @@ export interface ColumnWithMeta extends ColMeta {
 export default function KanbanBoard({
   onCardClick,
   filters,
-  sortMode,
+  sortLayers,
+  mailboxId,
   accountId,
   settingsOpen,
   onSettingsClose,
@@ -50,7 +51,8 @@ export default function KanbanBoard({
 }: {
   onCardClick: (card: KanbanCardType) => void,
   filters: FilterState,
-  sortMode: SortMode,
+  sortLayers: { field: string, order: 'asc' | 'desc' }[],
+  mailboxId: string,
   accountId: number | string | null,
   settingsOpen: boolean,
   onSettingsClose: () => void,
@@ -125,18 +127,8 @@ export default function KanbanBoard({
   const fetchBoard = useCallback(async () => {
     setLoading(true);
     try {
-      // map sortMode to backend params
-      const [sortBy, sortOrder] = sortMode.split('-');
-
       const [boardData, columnsData] = await Promise.all([
-        kanbanService.getKanban({
-          unread: filters.unread,
-          hasAttachments: filters.hasAttachment,
-          sortBy,
-          sortOrder,
-          // Cache buster is handled by the backend typically but we can ensure it here if needed
-          // by passing it in a generic way or updating the service.
-        }),
+        emailService.getKanban(mailboxId, sortLayers),
         kanbanService.getColumns(),
       ]);
 
@@ -151,7 +143,7 @@ export default function KanbanBoard({
           color: col.color
         }));
 
-      const incomingCols = boardData.columns || {};
+      const incomingCols = (boardData.columns || {}) as Record<string, KanbanCardType[]>;
 
       // Ensure all meta columns exist in state even if empty
       const finalCols: Record<string, KanbanCardType[]> = {};
@@ -175,7 +167,7 @@ export default function KanbanBoard({
     } finally {
       setLoading(false);
     }
-  }, [filters, sortMode]);
+  }, [filters, sortLayers, mailboxId]);
 
   useEffect(() => {
     fetchBoard();

@@ -48,6 +48,37 @@ export const emailService = {
     return data;
   },
 
+  // NEW: Multi-layer sort support
+  async getEmailsByMailbox(mailboxId: string, page: number = 1, perPage: number = 20, filters: any = {}, sortLayers: { field: string, order: 'asc' | 'desc' }[] = []) {
+    let url = `/mailboxes/${mailboxId}/emails?page=${page}&perPage=${perPage}`;
+    if (filters.unread) url += `&unread=true`;
+    if (filters.hasAttachment) url += `&hasAttachments=true`;
+    
+    if (sortLayers.length > 0) {
+      sortLayers.forEach(layer => {
+        url += `&sort=${layer.field}:${layer.order}`;
+      });
+    } else {
+      url += `&sort=receivedDate:desc`;
+    }
+
+    const response = await apiClient.get(url);
+    return response.data;
+  },
+
+  async getKanban(mailboxId: string, sortLayers: { field: string, order: 'asc' | 'desc' }[] = []) {
+    let url = `/mailboxes/${mailboxId}/kanban`;
+    if (sortLayers.length > 0) {
+      sortLayers.forEach(layer => {
+        url += `&sort=${layer.field}:${layer.order}`;
+      });
+    } else {
+      url += `&sort=receivedDate:desc`;
+    }
+    const response = await apiClient.get(url);
+    return response.data;
+  },
+
   // Get email detail
   getEmailDetail: async (emailId: string): Promise<Email> => {
     if (USE_MOCK_API) {

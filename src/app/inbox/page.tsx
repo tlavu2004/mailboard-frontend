@@ -35,7 +35,7 @@ import {
 import KanbanBoard from '@/app/components/Kanban/KanbanBoard';
 import SearchResults from '@/app/components/SearchResults';
 import SearchInput from '@/app/components/SearchInput';
-import FilterBar, { FilterState, SortMode } from '@/app/components/FilterBar';
+import FilterBar, { FilterState } from '@/app/components/FilterBar';
 import { useAuth } from '@/contexts/AuthContext';
 import { emailService } from '@/services/email';
 import { searchService } from '@/services/searchService';
@@ -145,6 +145,58 @@ function InboxPageContent() {
   // by checking the current `inlineAlert` (if it's already showing for the same
   // email we don't re-create it). We intentionally do NOT persist dismissals so
   // the banner will reappear each time the user opens the email.
+  
+  // WebSocket Connection (Stabilized)
+  const userIdRef = useRef(user?.id);
+  useEffect(() => { userIdRef.current = user?.id; }, [user?.id]);
+  const handleNotificationRef = useRef<any>(null);
+
+
+  useEffect(() => {
+    const userId = userIdRef.current;
+    if (!userId) return;
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = process.env.NEXT_PUBLIC_API_URL 
+      ? process.env.NEXT_PUBLIC_API_URL.replace(/^https?:\/\//, '') 
+      : 'localhost:8080/api/v1';
+    
+    // Ensure we don't have double /api/v1 or missing parts
+    const cleanHost = host.split('/api/v1')[0]; 
+    const wsUrl = `${protocol}//${cleanHost}/ws/notifications?userId=${userId}`;
+    
+    console.log('[WS] Connecting to:', wsUrl);
+    const socket = new WebSocket(wsUrl);
+
+    socket.onopen = () => {
+      console.log('[WS] Connected successfully');
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        console.log('[WS] Received message:', msg);
+        if (handleNotificationRef.current) handleNotificationRef.current(msg);
+      } catch (err) {
+        console.error('[WS] Error parsing message:', err);
+      }
+    };
+
+    socket.onclose = (e) => {
+      console.log('[WS] Connection closed:', e.code, e.reason);
+    };
+
+    socket.onerror = (err) => {
+      console.error('[WS] Socket error:', err);
+    };
+
+    return () => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
+    };
+  }, [user?.id]); 
+
   useEffect(() => {
     if (!selectedEmail) {
       setInlineAlert(null);
@@ -192,18 +244,18 @@ function InboxPageContent() {
       return { unread: false, hasAttachment: false };
     }
   });
-  const [sortMode, setSortMode] = useState<SortMode>(() => {
-    if (typeof window === 'undefined') return 'date-desc';
-    return (localStorage.getItem('mb:sortMode') as SortMode) || 'date-desc';
+  const [sortLayers, setSortLayers] = useState<{ field: string, order: 'asc' | 'desc' }[]>(() => {
+    const saved = localStorage.getItem('mb:sortLayers');
+    return saved ? JSON.parse(saved) : [{ field: 'receivedDate', order: 'desc' }];
   });
 
   // Persist filters & sort state
   useEffect(() => {
     try {
       localStorage.setItem('mb:filters', JSON.stringify(filters));
-      localStorage.setItem('mb:sortMode', sortMode);
+      localStorage.setItem('mb:sortLayers', JSON.stringify(sortLayers));
     } catch (e) {}
-  }, [filters, sortMode]);
+  }, [filters, sortLayers]);
   const [activeIndex, setActiveIndex] = useState<number>(-1);
   const [isKeyboardHelpVisible, setIsKeyboardHelpVisible] = useState(false);
 
@@ -348,12 +400,12 @@ function InboxPageContent() {
        }));
        
        // Force a refresh from server to be 100% sure
-       setTimeout(() => loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment, undefined, undefined, true), 500);
+       setTimeout(() => loadEmails(1, true), 500);
     }
     
     // 3. If we are in SENT, refresh to see the new mail
     if (normalizedMailbox === 'SENT') {
-        loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment, undefined, undefined, true);
+        loadEmails(1, true);
      }
 
      // 4. Always refresh mailbox counts to reflect decremented Drafts and incremented Sent
@@ -518,100 +570,20 @@ function InboxPageContent() {
     }
   }, [setMailboxes, setSelectedMailbox]);
 
-  const loadEmails = useCallback(async (
-    mailboxId: string,
-    page: number = 1,
-    perPage: number = pageSize,
-    unread?: boolean,
-    hasAttachments?: boolean,
-    sortByParam?: string,
-    sortOrderParam?: string,
-    forceRefresh: boolean = false
-  ) => {
-    if (!mailboxId) {
-      console.warn('[InboxPage] loadEmails: skipped, no mailboxId');
-      return;
-    }
-
-    // Determine sorting
-    let finalSortBy = sortByParam;
-    let finalSortOrder = sortOrderParam;
-
-    if (!finalSortBy || !finalSortOrder) {
-      const parts = sortMode.split('-');
-      finalSortBy = parts[0];
-      finalSortOrder = parts[1] || 'desc';
-    }
-
-    console.log('[InboxPage] loadEmails: loading', mailboxId, 'page', page, 'sort', finalSortBy, finalSortOrder, 'force=', forceRefresh);
-    if (!forceRefresh && mailboxId !== selectedMailboxRef.current) {
-      console.log('[InboxPage] loadEmails ignored: mailbox mismatch', { requested: mailboxId, current: selectedMailboxRef.current });
-      return;
-    }
-    setEmailsLoading(true);
+  const loadEmails = useCallback(async (p: number, silent: boolean = false) => {
+    if (!selectedMailbox) return;
+    if (!silent) setEmailsLoading(true);
     try {
-      let data = await emailService.getEmails(
-        mailboxId,
-        page,
-        perPage,
-        unread,
-        hasAttachments,
-        finalSortBy,
-        finalSortOrder
-      );
-      console.log('[InboxPage] loadEmails: raw response:', JSON.stringify(data).substring(0, 200));
-
-      // Robust unwrapping: If data itself is an ApiResponse (success/data), unwrap it manually
-      if (data && (data as any).success !== undefined && (data as any).data !== undefined) {
-        console.log('[InboxPage] loadEmails: unwrapping nested ApiResponse');
-        data = (data as any).data;
-      }
-
-      if (mailboxId !== selectedMailboxRef.current) {
-        console.log('[InboxPage] loadEmails aborted: user switched mailbox during fetch');
-        return;
-      }
-
-      const emailList = data.emails || [];
-      console.log('[InboxPage] loadEmails: found', emailList.length, 'emails, total:', data.total);
-      setEmails(emailList);
-      setTotalEmails(data.total || 0);
-      setCurrentPage(page);
-      // Preserve selected email when paginating within the same mailbox.
-      setSelectedEmail(prev => (prev && prev.mailboxId === mailboxId) ? prev : null);
-
-      // Persist current page & mailbox so reload can restore
-      try { localStorage.setItem('mb:currentPage', String(page)); } catch (e) { }
-      try { localStorage.setItem('mb:selectedMailbox', mailboxId); } catch (e) { }
-
-      // Background enrichment: for items that claim attachments but lack metadata,
-      // fetch full detail for a small number to populate attachments quickly.
-      (async () => {
-        try {
-          const toEnrich = (emailList || []).filter(e => e.hasAttachments && (!e.attachments || e.attachments.length === 0)).slice(0, 6);
-          if (toEnrich.length > 0) {
-            console.log('[InboxPage] Enriching attachments for', toEnrich.length, 'emails');
-            for (const partial of toEnrich) {
-              try {
-                const full = await emailService.getEmailDetail(partial.id);
-                setEmails(prev => prev.map(p => p.id === full.id ? { ...p, ...full } : p));
-                setSelectedEmail(prev => prev && prev.id === full.id ? full : prev);
-              } catch (err) {
-                console.warn('[InboxPage] Enrich failed for', partial.id, err);
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('[InboxPage] Attachment enrichment error', e);
-        }
-      })();
-    } catch (error) {
-      console.error('[InboxPage] loadEmails: FAILED', error);
-      message.error('Failed to load emails');
+      const data = await emailService.getEmailsByMailbox(selectedMailbox, p, pageSize, filters, sortLayers);
+      setEmails(data.emails);
+      setTotalEmails(data.total);
+      setCurrentPage(p);
+    } catch (err) {
+      console.error('Failed to load emails:', err);
     } finally {
-      setEmailsLoading(false);
+      if (!silent) setEmailsLoading(false);
     }
-  }, [pageSize, sortMode]);
+  }, [selectedMailbox, pageSize, filters, sortLayers]);
 
   // Primary initialization: load mailboxes THEN load emails in sequence
   useEffect(() => {
@@ -633,20 +605,9 @@ function InboxPageContent() {
         
         // Restore page number and filters from localStorage
         const savedPage = (typeof window !== 'undefined') ? Number(localStorage.getItem('mb:currentPage') || '1') : 1;
-        const savedFiltersStr = (typeof window !== 'undefined') ? localStorage.getItem('mb:filters') : null;
-        const savedFilters = savedFiltersStr ? JSON.parse(savedFiltersStr) : filters;
-        const savedSortMode = (typeof window !== 'undefined') ? (localStorage.getItem('mb:sortMode') as SortMode) : sortMode;
         
         // Load with restored state
-        await loadEmails(
-          mailboxToLoad, 
-          savedPage || 1, 
-          pageSize, 
-          savedFilters.unread, 
-          savedFilters.hasAttachment,
-          savedSortMode?.split('-')[0],
-          savedSortMode?.split('-')[1]
-        );
+        await loadEmails(savedPage || 1);
       } else {
         console.warn('[InboxPage] init: no mailbox available to load');
       }
@@ -676,10 +637,10 @@ function InboxPageContent() {
     }
     if (initialLoadDone && selectedMailbox) {
       console.log('[InboxPage] selectedMailbox/sort/filter changed to', selectedMailbox, '- reloading emails');
-      loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
+      loadEmails(1);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMailbox, filters.unread, filters.hasAttachment, sortMode, pageSize]);
+  }, [selectedMailbox, filters, sortLayers, pageSize]);
 
   // Auto-generate embeddings periodically (every 2 minutes)
   useEffect(() => {
@@ -715,7 +676,7 @@ function InboxPageContent() {
     if (size && size !== pageSize) {
       setPageSize(size);
     }
-    loadEmails(selectedMailbox, page, newPageSize, filters.unread, filters.hasAttachment);
+    loadEmails(page);
   };
 
   const handleMailboxSelect = (mailboxId: string) => {
@@ -794,9 +755,19 @@ function InboxPageContent() {
    const handleRefresh = () => {
      setSelectedEmail(null);
      setShowMobileDetail(false);
-     loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
-     message.success('Refreshed');
+     loadEmails(1);
    };
+
+   const handleResetFilters = useCallback(() => {
+     setFilters({ unread: false, hasAttachment: false });
+     setSortLayers([{ field: 'receivedDate', order: 'desc' }]);
+     setCurrentPage(1);
+     setSelectedEmail(null);
+     setShowMobileDetail(false);
+     // Explicitly reload with defaults
+     loadEmails(1, true);
+     message.info('Filters reset to default');
+   }, [loadEmails]);
 
    const handleSync = async (mailboxId?: string) => {
      setSyncLoading(true);
@@ -820,7 +791,7 @@ function InboxPageContent() {
        
        await emailService.syncEmails(undefined, syncFolder);
        message.success('Sync completed. Refreshing emails...');
-       await loadEmails(selectedMailbox);
+       await loadEmails(1);
      } catch (error) {
        console.error('Sync failed:', error);
        message.error('Failed to sync emails from Gmail');
@@ -893,67 +864,72 @@ function InboxPageContent() {
           let newEmailsForTotal = 0;
           for (const id of emailIds) {
             try {
-              const full = await emailService.getEmailDetail(String(id));
+              const fullEmails = await Promise.all([emailService.getEmailDetail(String(id))]);
               
               // 1. Always update mailbox counts
               loadMailboxes();
 
               // 2. Decide if we should notify and update total
               const isNewForInbox = 
-                (full.mailboxId || '').toUpperCase() === 'INBOX' && 
+                (fullEmails[0].mailboxId || '').toUpperCase() === 'INBOX' && 
                 msg.type === 'NEW_EMAILS';
               
               if (isNewForInbox) {
                 newEmailsForTotal++;
               }
 
-              // 3. Update the visible list if appropriate (Option 2 logic)
+              // 3. Update the visible list if appropriate
               setEmails(prev => {
-                const belongsInView = 
-                  (full.mailboxId || '').toUpperCase() === (selectedMailbox || 'INBOX').toUpperCase() ||
-                  ((full.mailboxId || '').toUpperCase() === 'INBOX' && isInbox);
+                // Option 2 Logic: Insertion with better matching and debugging
+                const shouldInsert = fullEmails.every(e => {
+                  const statusMatch = (e.mailboxId || '').toUpperCase() === selectedMailbox.toUpperCase();
+                  const unreadMatch = !filters.unread || !e.isRead;
+                  const attachMatch = !filters.hasAttachment || e.hasAttachments;
                   
+                  console.log(`[Realtime] Checking email ${e.id}: status=${statusMatch}, unread=${unreadMatch}, attach=${attachMatch}`);
+                  return statusMatch && unreadMatch && attachMatch;
+                });
+
+                if (!shouldInsert && msg.type !== 'UPDATED_EMAILS') return prev;
+
+                const full = fullEmails[0];
                 const exists = prev.some(e => String(e.id) === String(full.id));
                 
                 if (exists) {
-                  if (!belongsInView) return prev.filter(e => String(e.id) !== String(full.id));
                   return prev.map(e => String(e.id) === String(full.id) ? full : e);
                 }
                 
-                // If not in current view or searching, don't insert into list
-                if (!belongsInView || isSearching) return prev;
+                if (isSearching) return prev;
 
-                // CRITICAL FIX: Re-verify filters for the new email before inserting into visible list
-                if (filters.unread && full.isRead) return prev;
-                if (filters.hasAttachment && !full.hasAttachments) return prev;
-
-                // Sort-aware insertion
                 const next = [full, ...prev.filter(e => String(e.id) !== String(full.id))];
                 next.sort((a, b) => {
-                  const [field, order] = sortMode.split('-');
-                  const isAsc = order === 'asc';
-                  if (field === 'date') {
-                    return isAsc ? new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime() : new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime();
-                  }
-                  if (field === 'sender') {
-                    const sA = (a.from?.name || a.from?.email || '').toLowerCase();
-                    const sB = (b.from?.name || b.from?.email || '').toLowerCase();
-                    return isAsc ? sA.localeCompare(sB) : sB.localeCompare(sA);
+                  for (const layer of sortLayers) {
+                    const { field, order } = layer;
+                    const isAsc = order === 'asc';
+
+                    let res = 0;
+                    if (field === 'date' || field === 'receivedDate') {
+                      res = isAsc ? new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime() : new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime();
+                    } else if (field === 'fromName' || field === 'sender') {
+                      const getName = (e: Email) => {
+                        const isMe = e.isFromMe || (e.accountEmail && e.from?.email?.toLowerCase() === e.accountEmail.toLowerCase());
+                        if (isMe) return 'you'; 
+                        return (e.fromName || e.from?.name || e.from?.email || '').toLowerCase();
+                      };
+                      const sA = getName(a);
+                      const sB = getName(b);
+                      res = isAsc ? sA.localeCompare(sB) : sB.localeCompare(sA);
+                    } else if (field === 'subject') {
+                      res = isAsc ? (a.subject || '').localeCompare(b.subject || '') : (b.subject || '').localeCompare(a.subject || '');
+                    }
+                    
+                    if (res !== 0) return res;
                   }
                   return 0;
                 });
 
-                // Option 2: Only keep it if it falls within the current page's slice
-                // Since we don't have full context of other pages, we can only safely do this for Page 1
-                // or if the list is smaller than the page size.
                 if (currentPage === 1 || prev.length < pageSize) {
-                   const result = next.slice(0, pageSize);
-                   // Check if 'full' is actually in the result
-                   const isVisible = result.some(e => String(e.id) === String(full.id));
-                   if (isVisible) {
-                     console.log('[InboxPage] Email inserted into visible list:', full.subject);
-                   }
-                   return result;
+                   return next.slice(0, pageSize);
                 }
                 
                 return prev;
@@ -975,11 +951,11 @@ function InboxPageContent() {
         } catch (e) {
           console.warn('[InboxPage] Error in notification loop', e);
           loadMailboxes();
-          loadEmails(selectedMailbox, currentPage, pageSize, filters.unread, filters.hasAttachment);
+          loadEmails(currentPage, true);
         }
       })();
     }
-  }, [selectedMailbox, loadMailboxes, loadEmails, currentPage, pageSize, filters, isSearching, sortMode]);
+  }, [selectedMailbox, loadMailboxes, loadEmails, currentPage, pageSize, filters, isSearching, sortLayers]);
 
   useEmailNotifications(accountId, handleNotification);
 
@@ -1046,7 +1022,7 @@ function InboxPageContent() {
       message.success({ content: 'Email snoozed!', key: 'snooze' });
       setSelectedEmail(null);
       setShowMobileDetail(false);
-      loadEmails(selectedMailbox);
+      loadEmails(1);
     } catch (error) {
       console.error('Snooze failed:', error);
       message.error({ content: 'Snooze failed', key: 'snooze' });
@@ -1373,6 +1349,11 @@ function InboxPageContent() {
     setTotalEstimate(0);
   };
 
+  // CRITICAL: Keep the ref updated with the latest callback (v10.32)
+  useEffect(() => {
+    handleNotificationRef.current = handleNotification;
+  }, [handleNotification]);
+
   return (
     <ProtectedRoute>
       <InlineAlertContext.Provider value={{
@@ -1527,11 +1508,12 @@ function InboxPageContent() {
               <div className="px-6 py-2">
                 <FilterBar
                   filters={filters}
-                  sortMode={sortMode}
+                  sortLayers={sortLayers}
                   onFilterChange={setFilters}
-                  onSortChange={setSortMode}
+                  onSortLayersChange={setSortLayers}
                   onSync={handleSync}
                   onRefresh={handleRefresh}
+                  onReset={handleResetFilters}
                   onSettings={viewMode === 'kanban' ? () => setKanbanSettingsOpen(true) : undefined}
                   syncLoading={syncLoading}
                   refreshLoading={emailsLoading}
@@ -1706,7 +1688,8 @@ function InboxPageContent() {
                         <KanbanBoard
                           onCardClick={handleKanbanCardClick}
                           filters={filters}
-                          sortMode={sortMode}
+                          sortLayers={sortLayers}
+                          mailboxId={selectedMailbox}
                           accountId={accountId}
                           settingsOpen={kanbanSettingsOpen}
                           onSettingsClose={() => {
@@ -1825,7 +1808,7 @@ function InboxPageContent() {
             onCancel={handleComposeClose}
             onSend={handleComposeSend}
             onSaveDraft={handleDraftUpdate}
-            onDiscard={() => loadEmails(selectedMailbox)}
+            onDiscard={() => loadEmails(1)}
             mode={composeMode}
             currentUserEmail={replyToEmail?.accountEmail || user?.email}
             originalEmail={replyToEmail ? {
