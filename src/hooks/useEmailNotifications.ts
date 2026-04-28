@@ -36,9 +36,9 @@ export const useEmailNotifications = (
       // Construct WebSocket URL based on current API URL logic
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost/api/v1';
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      
+
       let host = 'localhost:8080'; // Default safety fallback
-      
+
       try {
         if (apiUrl.startsWith('http')) {
           const url = new URL(apiUrl);
@@ -90,6 +90,20 @@ export const useEmailNotifications = (
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data) as NotificationMessage;
+
+          // If backend sent a wrapped JSON string in `message`, try to unwrap it
+          if (data && typeof data.message === 'string' && data.message.trim().startsWith('{')) {
+            try {
+              const inner = JSON.parse(data.message);
+              if (inner && inner.type) {
+                onNotificationRef.current(inner as NotificationMessage);
+                return;
+              }
+            } catch (innerErr) {
+              // If unwrapping fails, fall through to deliver the original payload
+            }
+          }
+
           onNotificationRef.current(data);
         } catch (e) {
           console.error('[WebSocket] Failed to parse message:', e);
@@ -100,7 +114,7 @@ export const useEmailNotifications = (
       ws.onclose = (event) => {
         const duration = Date.now() - lastAttemptTimeRef.current;
         console.log(`[WebSocket] Disconnected: ${event.reason} (Duration: ${duration}ms)`);
-        
+
         // If it failed very quickly (less than 2s), it's likely a persistent network/offline issue
         if (duration < 2000) {
           failureCountRef.current++;
@@ -128,7 +142,7 @@ export const useEmailNotifications = (
       failureCountRef.current = 0;
       connect();
     };
-    
+
     const handleOffline = () => {
       console.log('[WebSocket] Network offline, closing socket...');
       if (socketRef.current) {

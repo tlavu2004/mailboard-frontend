@@ -6,41 +6,41 @@ import { ConfigProvider } from 'antd';
 import OfflineIndicator from "@/components/OfflineIndicator";
 import "./globals.css";
 
-const geistSans = Geist({
+// Remove Google Font dependency to avoid build errors in environments with restricted internet
+// We will use a high-quality system font stack instead
+const geistSans = {
   variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+};
 
-const geistMono = Geist_Mono({
+const geistMono = {
   variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+};
 
 export const viewport: Viewport = {
   themeColor: '#667eea',
 };
 
 export const metadata: Metadata = {
-  title: "AI Email Box - Secure Email Dashboard",
+  title: "MailBoard - Secure Email Dashboard",
   description: "A modern email dashboard with authentication",
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'AI EmailBox',
+    title: 'MailBoard',
   },
   formatDetection: {
     telephone: false,
   },
   openGraph: {
     type: 'website',
-    siteName: 'AI Email Box',
-    title: 'AI Email Box - Secure Email Dashboard',
+    siteName: 'MailBoard',
+    title: 'MailBoard - Secure Email Dashboard',
     description: 'A modern email dashboard with authentication and offline support',
   },
   twitter: {
     card: 'summary',
-    title: 'AI Email Box - Secure Email Dashboard',
+    title: 'MailBoard - Secure Email Dashboard',
     description: 'A modern email dashboard with authentication and offline support',
   },
 };
@@ -54,14 +54,14 @@ export default function RootLayout({
     <html lang="en">
       <head>
         <meta name="referrer" content="no-referrer-when-downgrade" />
-        <meta name="application-name" content="AI EmailBox" />
+        <meta name="application-name" content="MailBoard" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="AI EmailBox" />
+        <meta name="apple-mobile-web-app-title" content="MailBoard" />
         <meta name="format-detection" content="telephone=no" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="theme-color" content="#667eea" />
-        
+
         <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
         <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32x32.png" />
         <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16x16.png" />
@@ -74,7 +74,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png" />
         <link rel="apple-touch-icon" sizes="384x384" href="/icons/icon-384x384.png" />
         <link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-512x512.png" />
-        
+
         {/* Service Worker Registration - inline for maximum reliability */}
         <script
           dangerouslySetInnerHTML={{
@@ -95,7 +95,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className="antialiased"
       >
         <AntdRegistry>
           <ConfigProvider

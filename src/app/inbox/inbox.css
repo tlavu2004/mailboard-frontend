@@ -37,7 +37,8 @@
 }
 
 /* Sidebar Items Consistency */
-.ant-menu-inline, .ant-menu-vertical {
+.ant-menu-inline,
+.ant-menu-vertical {
   border-right: none !important;
 }
 
@@ -46,6 +47,19 @@
   line-height: 44px !important;
   margin-block: 4px !important;
   border-radius: 8px !important;
+}
+
+.gmail-mailbox-count {
+  font-size: 12px;
+  line-height: 1;
+  color: #5f6368;
+  font-weight: 600;
+  min-width: 20px;
+  text-align: right;
+}
+
+.ant-menu-item-selected .gmail-mailbox-count {
+  color: #1a73e8;
 }
 
 /* Top Toolbar Styling */
@@ -60,7 +74,6 @@
   box-shadow: none !important;
 }
 
-/* Responsive styles */
 @media (max-width: 992px) {
   .email-list-layout {
     max-width: 100% !important;
@@ -73,6 +86,28 @@
   .inbox-header {
     padding: 0 16px !important;
   }
+
+  .top-toolbar {
+    padding: 0 12px !important;
+  }
+
+  .logo-text {
+    display: none !important;
+  }
+
+  .header-search {
+    margin: 0 8px !important;
+  }
+
+  .main-layout {
+    padding-bottom: 70px; /* Space for bottom nav */
+  }
+}
+
+@media (max-width: 576px) {
+  .logo-icon {
+    display: none !important;
+  }
 }
 
 @media (min-width: 993px) {
@@ -81,34 +116,117 @@
   }
 }
 
-/* List Item Spacing */
+/* Mobile Bottom Navigation */
+.mobile-bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 70px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  z-index: 1000;
+  padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.03);
+}
+
+.mobile-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 11px;
+  gap: 4px;
+  padding: 8px;
+  min-width: 64px;
+  transition: all 0.2s;
+}
+
+.mobile-nav-item .anticon {
+  font-size: 22px;
+}
+
+.mobile-nav-item.active {
+  color: #4f46e5;
+  font-weight: 600;
+}
+
+.mobile-fab-compose {
+  position: fixed;
+  right: 20px;
+  bottom: 90px;
+  width: 60px !important;
+  height: 60px !important;
+  z-index: 1001;
+  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.4) !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+/* List Item Spacing - Refined */
 .mail-item-card {
   margin-bottom: 8px !important;
   border: 1px solid #f1f5f9 !important;
-  border-radius: 10px !important;
+  border-radius: 12px !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  background: #ffffff;
 }
 
 .mail-item-card:hover {
-  border-color: #667eea !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
+  transform: translateY(-1px);
 }
 
-/* Email content card */
+/* Email selection state - Premium look */
 .email-card-selected {
-  border-left: 3px solid #667eea !important;
-  background-color: #f0f7ff !important;
+  border-left: 4px solid #4f46e5 !important;
+  background-color: #f8faff !important;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.08) !important;
+}
+
+/* Unread Indicator */
+.unread-dot {
+  width: 8px;
+  height: 8px;
+  background-color: #4f46e5;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 8px rgba(79, 70, 229, 0.4);
+}
+
+.mail-item-sender {
+  font-size: 14px;
+  color: #1a1a1b;
+}
+
+.mail-item-subject {
+  font-size: 13.5px;
+  color: #202124;
+}
+
+.mail-item-preview {
+  font-size: 12.5px;
+  color: #5f6368;
 }
 
 /* Scrollbar hide */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
 
-/* Resize Handle */
+/* Resize Handle - Multi-support */
 .resize-handle {
   width: 4px;
   height: 100%;
@@ -116,14 +234,15 @@
   background: transparent;
   transition: background 0.2s, width 0.2s;
   position: relative;
-  z-index: 5;
-  margin: 0 -2px;
+  z-index: 50;
+  margin: 0 -1px;
+  flex-shrink: 0;
 }
 
-.resize-handle:hover, .resize-handle.active {
-  background: #667eea;
-  width: 6px;
-  margin: 0 -3px;
+.resize-handle:hover,
+.resize-handle.active {
+  background: #4f46e5 !important;
+  width: 4px;
 }
 
 .resize-handle::after {
@@ -135,4 +254,114 @@
   transform: translateX(-50%);
   width: 1px;
   background: rgba(0, 0, 0, 0.04);
+}
+
+/* Global resizing state to stop iframe interference */
+.resizing iframe {
+  pointer-events: none !important;
+}
+
+.resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+/* Compact pagination adjustments (use Ant Design "simple" mode) */
+.compact-pagination {
+  --compact-pagination-gap: 8px;
+}
+
+/* Ensure the simple pagination input and arrows align nicely */
+.ant-pagination.ant-pagination-simple {
+  display: inline-flex;
+  align-items: center;
+}
+
+.ant-pagination.ant-pagination-simple .ant-pagination-prev,
+.ant-pagination.ant-pagination-simple .ant-pagination-next {
+  margin: 0 6px;
+}
+
+/* Remove extra top spacing inside the inbox list scroll container */
+.inbox-list-scroll .ant-list {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+.inbox-list-scroll .ant-list-item {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+/* Compact footer pagination: keep controls on one line and truncate the range text */
+.inbox-pagination-footer {
+  padding: 8px 8px 8px 12px;
+  /* small right padding so controls sit near edge */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* left info and right controls */
+  gap: 8px;
+  border-top: 1px solid #e6edf3;
+  background: #fcfdff;
+  flex-wrap: nowrap;
+  position: relative;
+  z-index: 70;
+  /* above resize handle */
+  overflow: visible;
+}
+
+.inbox-pagination-info {
+  font-size: 13px;
+  color: #6b7280;
+  min-width: 100px;
+  /* compact to fit within 400px list width */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inbox-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.inbox-pagination-controls {
+  margin-left: auto;
+  /* force controls to the right when needed */
+}
+
+/* Ensure the page size selector doesn't push pagination to a new row */
+.inbox-pagination-controls .ant-select {
+  min-width: 44px;
+  /* shrink select to save space */
+}
+
+/* Hide overflow inside footer so controls don't appear outside the column */
+.inbox-pagination-footer {
+  overflow: hidden;
+}
+
+/* Email detail action buttons - slightly smaller text and tighter padding */
+.email-detail-actions .ant-btn {
+  font-size: 13px !important;
+  padding: 6px 10px !important;
+  min-height: 30px !important;
+}
+
+.email-detail-actions .ant-btn .anticon {
+  font-size: 14px !important;
+}
+
+/* Ensure the action buttons in the email detail are interactive and above common layout layers */
+.email-detail-actions {
+  position: relative;
+  z-index: 2000;
+}
+
+.email-detail-actions .ant-btn {
+  pointer-events: auto !important;
 }

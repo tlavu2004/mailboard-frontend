@@ -13,7 +13,7 @@ const SnoozePopover: React.FC<SnoozePopoverProps> = ({ onConfirm }) => {
   const [customDate, setCustomDate] = useState<Dayjs | null>(dayjs());
   const [customTime, setCustomTime] = useState<Dayjs | null>(dayjs().add(1, 'hour').startOf('hour'));
   const [loading, setLoading] = useState(false);
-  
+
   const calculatedDate = useMemo(() => {
     let date = dayjs();
     if (mode === 'later_today') date = date.add(4, 'hour');
@@ -54,7 +54,7 @@ const SnoozePopover: React.FC<SnoozePopoverProps> = ({ onConfirm }) => {
     <div style={{ width: 260, padding: '16px' }}>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Text strong>Snooze Until</Text>
-        
+
         <Select
           style={{ width: '100%' }}
           value={mode}
@@ -69,15 +69,15 @@ const SnoozePopover: React.FC<SnoozePopoverProps> = ({ onConfirm }) => {
 
         {mode === 'custom' && (
           <Space direction="vertical" style={{ width: '100%' }}>
-            <DatePicker 
-              style={{ width: '100%' }} 
-              value={customDate} 
+            <DatePicker
+              style={{ width: '100%' }}
+              value={customDate}
               onChange={setCustomDate}
               disabledDate={(current) => current && current < dayjs().startOf('day')}
             />
-            <TimePicker 
-              style={{ width: '100%' }} 
-              value={customTime} 
+            <TimePicker
+              style={{ width: '100%' }}
+              value={customTime}
               onChange={setCustomTime}
               format="HH:mm"
               hideDisabledOptions
@@ -97,6 +97,7 @@ const SnoozePopover: React.FC<SnoozePopoverProps> = ({ onConfirm }) => {
         <Button
           type="primary"
           block
+          onPointerDown={(e) => { e.stopPropagation(); }}
           onClick={handleConfirm}
           loading={loading}
           disabled={isInvalid || (mode === 'custom' && (!customDate || !customTime))}

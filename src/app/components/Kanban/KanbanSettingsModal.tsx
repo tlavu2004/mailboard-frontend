@@ -24,6 +24,7 @@ interface KanbanSettingsModalProps {
   onColumnsChanged: () => void;
   initialSelectedColumnId?: string;
   triggerAddOnOpen?: boolean;
+  columnCounts?: Record<string, number>;
 }
 
 // Sortable item wrapper with new design
@@ -76,7 +77,8 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({
   onClose, 
   onColumnsChanged, 
   initialSelectedColumnId,
-  triggerAddOnOpen
+  triggerAddOnOpen,
+  columnCounts = {}
 }) => {
   const [columns, setColumns] = useState<KanbanColumn[]>([]);
   const [gmailLabels, setGmailLabels] = useState<GmailLabel[]>([]);
@@ -243,6 +245,13 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({
       return;
     }
     
+    // Check if column is empty
+    const count = columnCounts[editingColumn.key] || 0;
+    if (count > 0) {
+      message.warning(`Cannot delete column "${editingColumn.label}" because it still contains ${count} emails. Please move or delete the emails first.`);
+      return;
+    }
+    
     const backup = columns;
     setColumns(prev => prev.filter(col => col.id !== editingColumn.id));
     setEditingColumn(null);
@@ -330,20 +339,32 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({
               </button>
             </div>
             
-            <div className="p-4 md:p-6 bg-white border-t border-gray-100">
-              <Tooltip title={(!editingColumn || isCreating) ? "Select a column to delete" : (editingColumn.isDefault ? "Safety: Default columns cannot be deleted" : "")}>
-                <button 
-                  onClick={handleDeleteColumn}
-                  disabled={!editingColumn || isCreating || editingColumn.isDefault}
-                  className={`w-full py-3 md:py-3.5 text-sm font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all border ${
-                    (!editingColumn || isCreating || editingColumn.isDefault)
-                      ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed'
-                      : 'bg-red-50 text-red-600 border-red-100 hover:bg-red-600 hover:text-white hover:border-red-600'
-                  }`}
-                >
-                  <Trash2 size={16} /> Delete Column
-                </button>
-              </Tooltip>
+            <div className="p-4 md:p-6 bg-white border-t border-gray-100 mt-auto">
+              {(() => {
+                const count = columnCounts[editingColumn?.key || ''] || 0;
+                const isDeletable = editingColumn && !isCreating && !editingColumn.isDefault && count === 0;
+                let tooltip = "Select a column to delete";
+                if (isCreating) tooltip = "Save current column before deleting others";
+                else if (editingColumn?.isDefault) tooltip = "Safety: Default columns cannot be deleted";
+                else if (count > 0) tooltip = `Cannot delete: Column has ${count} emails. Empty it first.`;
+                else if (editingColumn) tooltip = "Delete this column permanently";
+
+                return (
+                  <Tooltip title={tooltip}>
+                    <button 
+                      onClick={handleDeleteColumn}
+                      disabled={!isDeletable}
+                      className={`w-full py-3 md:py-3.5 text-sm font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all border ${
+                        !isDeletable
+                          ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed'
+                          : 'bg-red-50 text-red-600 border-red-100 hover:bg-red-600 hover:text-white hover:border-red-600'
+                      }`}
+                    >
+                      <Trash2 size={16} /> Delete Column
+                    </button>
+                  </Tooltip>
+                );
+              })()}
             </div>
           </div>
 
@@ -359,7 +380,8 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({
             </button>
 
             {editingColumn || isCreating ? (
-              <div className="flex-1 flex flex-col p-6 md:p-12">
+              <>
+                <div className="flex-1 flex flex-col p-6 md:p-12 overflow-y-auto">
                 {/* Mobile back button */}
                 <button 
                   onClick={handleBackToList}
@@ -389,6 +411,7 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({
                       size="large"
                       value={editForm.label}
                       onChange={(e) => setEditForm(prev => ({ ...prev, label: e.target.value }))}
+                      disabled={editingColumn?.isDefault}
                       className="!rounded-lg !border-gray-200"
                     />
                   </div>
@@ -411,6 +434,7 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({
                       }}
                       allowClear
                       className="w-full"
+                      disabled={editingColumn?.isDefault}
                       status={getDuplicateLabelWarning(editForm.gmailLabel, editingColumn?.id) ? 'warning' : undefined}
                       options={[
                         { value: '', label: '🚫 No Label Mapping' },
@@ -436,24 +460,26 @@ const KanbanSettingsModal: React.FC<KanbanSettingsModalProps> = ({
                         value={editForm.color || '#64748b'}
                         onChange={(_, hex) => setEditForm(prev => ({ ...prev, color: hex }))}
                         showText
+                        disabled={editingColumn?.isDefault}
                       />
                       <span className="text-sm text-gray-500">Choose any color</span>
                     </div>
                   </div>
-
-                  {/* Save Button */}
-                  <div className="pt-4 md:pt-6">
-                    <button
-                      onClick={handleUpdateColumn}
-                      disabled={saving}
-                      className="flex items-center gap-2 px-6 md:px-8 py-2.5 md:py-3 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-all shadow-sm disabled:opacity-50"
-                    >
-                      {saving ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> : <Save size={14} />} 
-                      {saving ? 'Creating...' : (isCreating ? 'Create Column' : 'Save Changes')}
-                    </button>
                   </div>
                 </div>
-              </div>
+
+                {/* Footer Save Button (Fixed) */}
+                <div className="p-6 md:px-12 md:py-8 bg-gray-50/50 border-t border-gray-100 flex justify-end">
+                  <button
+                    onClick={handleUpdateColumn}
+                    disabled={saving || (editingColumn?.isDefault && !isCreating)}
+                    className="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 disabled:opacity-50"
+                  >
+                    {saving ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> : <Save size={16} />} 
+                    {saving ? 'Creating...' : (isCreating ? 'Create Column' : 'Save Changes')}
+                  </button>
+                </div>
+              </>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-center p-8 md:p-12">
                 <div className="w-16 h-16 md:w-24 md:h-24 bg-gray-50 rounded-2xl md:rounded-3xl flex items-center justify-center text-gray-200 mb-4 md:mb-6">

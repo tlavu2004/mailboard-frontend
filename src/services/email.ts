@@ -9,17 +9,17 @@ export const emailService = {
       const mockData = await mockEmailApi.getMailboxes();
       return { mailboxes: mockData.mailboxes };
     }
-    
+
     const response = await apiClient.get<{ mailboxes: Mailbox[], accountId?: number }>('mailboxes');
     return response.data;
   },
 
   // Get emails for a specific mailbox
   getEmails: async (
-    mailboxId: string, 
-    page: number = 1, 
-    perPage: number = 20, 
-    unread?: boolean, 
+    mailboxId: string,
+    page: number = 1,
+    perPage: number = 20,
+    unread?: boolean,
     hasAttachments?: boolean,
     sortBy?: string,
     sortOrder?: string
@@ -27,17 +27,55 @@ export const emailService = {
     if (USE_MOCK_API) {
       return await mockEmailApi.getEmails(mailboxId, page, perPage) as unknown as EmailListResponse;
     }
-    
-    const response = await apiClient.get<EmailListResponse>(`mailboxes/${mailboxId}/emails`, {
-      params: { 
-        page, 
+
+    const response = await apiClient.get<any>(`mailboxes/${mailboxId}/emails`, {
+      params: {
+        page,
         perPage,
         unread: unread === undefined ? undefined : unread,
         hasAttachments: hasAttachments === undefined ? undefined : hasAttachments,
         sortBy,
-        sortOrder
+        sortOrder,
+        _t: Date.now() // Cache busting (V10.27)
       },
     });
+    const data = response.data;
+    if (data && data.emails && Array.isArray(data.emails)) {
+      data.emails.forEach((e: any) => {
+        if (!e.mailboxId && e.status) e.mailboxId = e.status;
+      });
+    }
+    return data;
+  },
+
+  // NEW: Multi-layer sort support
+  async getEmailsByMailbox(mailboxId: string, page: number = 1, perPage: number = 20, filters: any = {}, sortLayers: { field: string, order: 'asc' | 'desc' }[] = []) {
+    let url = `/mailboxes/${mailboxId}/emails?page=${page}&perPage=${perPage}`;
+    if (filters.unread) url += `&unread=true`;
+    if (filters.hasAttachment) url += `&hasAttachments=true`;
+    
+    if (sortLayers.length > 0) {
+      sortLayers.forEach(layer => {
+        url += `&sort=${layer.field}:${layer.order}`;
+      });
+    } else {
+      url += `&sort=receivedDate:desc`;
+    }
+
+    const response = await apiClient.get(url);
+    return response.data;
+  },
+
+  async getKanban(mailboxId: string, sortLayers: { field: string, order: 'asc' | 'desc' }[] = []) {
+    let url = `/mailboxes/${mailboxId}/kanban`;
+    if (sortLayers.length > 0) {
+      sortLayers.forEach(layer => {
+        url += `&sort=${layer.field}:${layer.order}`;
+      });
+    } else {
+      url += `&sort=receivedDate:desc`;
+    }
+    const response = await apiClient.get(url);
     return response.data;
   },
 
@@ -46,9 +84,15 @@ export const emailService = {
     if (USE_MOCK_API) {
       return await mockEmailApi.getEmailById(emailId) as unknown as Email;
     }
-    
-    const response = await apiClient.get<Email>(`emails/${emailId}`);
-    return response.data;
+
+    const response = await apiClient.get<any>(`emails/${emailId}`, {
+      params: { _t: Date.now() } // Cache busting (V10.27)
+    });
+    const data = response.data;
+    if (data && !data.mailboxId && data.status) {
+      data.mailboxId = data.status;
+    }
+    return data;
   },
 
   // Search emails
@@ -59,27 +103,30 @@ export const emailService = {
       const filtered = all.emails.filter(e => e.subject.toLowerCase().includes(query.toLowerCase()));
       return { emails: filtered as unknown as Email[], nextPageToken: '', totalEstimate: filtered.length };
     }
-    const response = await apiClient.get<{ emails: Email[], nextPageToken: string, totalEstimate: number }>('emails/search', { 
-      params: { q: query, pageToken } 
+    const response = await apiClient.get<{ emails: Email[], nextPageToken: string, totalEstimate: number }>('emails/search', {
+      params: { q: query, pageToken }
     });
     return response.data;
   },
 
   // Send email with optional attachments
+  // Returns full email entity (mapped to DTO) so caller can perform optimistic UI updates
   sendEmail: async (
-    to: string[], 
-    cc: string[], 
-    bcc: string[], 
-    subject: string, 
+    to: string[],
+    cc: string[],
+    bcc: string[],
+    subject: string,
     body: string,
     threadId?: string,
-    attachments?: File[]
-  ): Promise<void> => {
+    attachments?: File[],
+    gmailDraftId?: string,
+    localEmailId?: number
+  ): Promise<Email | void> => {
     if (USE_MOCK_API) {
       // Mock implementation
       return;
     }
-    
+
     // If there are attachments, use FormData
     if (attachments && attachments.length > 0) {
       const formData = new FormData();
@@ -88,31 +135,56 @@ export const emailService = {
       formData.append('bcc', JSON.stringify(bcc));
       formData.append('subject', subject);
       formData.append('body', body);
-      if (threadId) {
-        formData.append('threadId', threadId);
-      }
+      if (threadId) formData.append('threadId', threadId);
+      if (gmailDraftId) formData.append('gmailDraftId', gmailDraftId);
+      if (localEmailId) formData.append('localEmailId', localEmailId.toString());
       
-      // Add each file
-      attachments.forEach((file) => {
+      attachments.forEach(file => {
         formData.append('attachments', file);
       });
-      
-      await apiClient.post('emails/send', formData, {
+
+      const response = await apiClient.post<any>('emails/send', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
-    } else {
-      // No attachments, use JSON
-      await apiClient.post('emails/send', { 
-        to, 
-        cc, 
-        bcc, 
-        subject, 
-        body,
-        threadId
-      });
+      return response.data;
     }
+
+    // Simple JSON request
+    const response = await apiClient.post<any>('emails/send', {
+      to,
+      cc,
+      bcc,
+      subject,
+      bodyText: body,
+      inReplyTo: threadId,
+      gmailDraftId,
+      localEmailId
+    });
+    return response.data;
+  },
+
+  // Save draft
+  saveDraft: async (
+    to: string[],
+    cc: string[],
+    bcc: string[],
+    subject: string,
+    body: string,
+    gmailDraftId?: string,
+    localEmailId?: string | number
+  ): Promise<Email> => {
+    const response = await apiClient.post<Email>('emails/draft', {
+      to,
+      cc,
+      bcc,
+      subject,
+      bodyText: body,
+      gmailDraftId,
+      localEmailId
+    });
+    return response.data;
   },
 
   // Reply to email
@@ -176,6 +248,22 @@ export const emailService = {
     await emailService.modifyEmail(emailId, ['TRASH'], []);
   },
 
+  // Move email to spam
+  markAsSpam: async (emailId: string): Promise<void> => {
+    if (USE_MOCK_API) {
+      return;
+    }
+    await emailService.modifyEmail(emailId, ['SPAM'], ['INBOX']);
+  },
+
+  // Restore email back to inbox from Trash/Spam
+  restoreToInbox: async (emailId: string, from: 'TRASH' | 'SPAM'): Promise<void> => {
+    if (USE_MOCK_API) {
+      return;
+    }
+    await emailService.modifyEmail(emailId, ['INBOX'], [from]);
+  },
+
   // Sync emails from Gmail
   syncEmails: async (accountId?: number, folderName: string = 'INBOX', limit: number = 10, page: number = 0): Promise<void> => {
     if (USE_MOCK_API) {
@@ -200,5 +288,10 @@ export const emailService = {
       return;
     }
     await apiClient.post(`emails/${emailId}/refresh`);
+  },
+
+  deleteDraft: async (draftId: string, emailId?: string | number): Promise<void> => {
+    const url = `emails/draft/${draftId || 'undefined'}${emailId ? `?emailId=${emailId}` : ''}`;
+    await apiClient.delete(url);
   },
 };
