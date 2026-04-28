@@ -1339,15 +1339,22 @@ function InboxPageContent() {
         <Layout style={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {/* TOP TOOLBAR - Minimalist & Stable */}
           <Header className="top-toolbar">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Button
+                type="text"
+                icon={<MenuOutlined />}
+                onClick={() => setMobileDrawerOpen(true)}
+                className="hidden-desktop mobile-menu-btn"
+                style={{ fontSize: '20px', padding: 0, width: '40px', height: '40px' }}
+              />
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }} onClick={() => handleMailboxSelect('INBOX')}>
-                <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg shadow-sm text-white" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+                <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg shadow-sm text-white logo-icon" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
                   <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
                     <path d="M20 3v4" /><path d="M22 5h-4" /><path d="M4 17v2" /><path d="M5 18H3" />
                   </svg>
                 </div>
-                <Title level={4} style={{ margin: 0, color: '#1a1a1a', letterSpacing: '-0.5px', fontWeight: 700 }}>MailBoard</Title>
+                <Title level={4} className="logo-text" style={{ margin: 0, color: '#1a1a1a', letterSpacing: '-0.5px', fontWeight: 700 }}>MailBoard</Title>
               </div>
             </div>
 
@@ -1838,6 +1845,57 @@ function InboxPageContent() {
               />
             )}
           </Modal>
+          {/* Mobile Navigation & FAB */}
+          {isMobile && !showMobileDetail && (
+            <>
+              <div className="mobile-bottom-nav">
+                <div 
+                  className={`mobile-nav-item ${selectedMailbox === 'INBOX' ? 'active' : ''}`}
+                  onClick={() => handleMailboxSelect('INBOX')}
+                >
+                  <InboxOutlined />
+                  <span>Inbox</span>
+                </div>
+                <div 
+                  className={`mobile-nav-item ${selectedMailbox === 'STARRED' ? 'active' : ''}`}
+                  onClick={() => handleMailboxSelect('STARRED')}
+                >
+                  <StarOutlined />
+                  <span>Starred</span>
+                </div>
+                <div 
+                  className={`mobile-nav-item ${selectedMailbox === 'SENT' ? 'active' : ''}`}
+                  onClick={() => handleMailboxSelect('SENT')}
+                >
+                  <SendOutlined />
+                  <span>Sent</span>
+                </div>
+                <div 
+                  className={`mobile-nav-item ${(selectedMailbox === 'DRAFTS' || selectedMailbox === 'DRAFT') ? 'active' : ''}`}
+                  onClick={() => handleMailboxSelect('DRAFTS')}
+                >
+                  <FileTextOutlined />
+                  <span>Drafts</span>
+                </div>
+                <div 
+                  className="mobile-nav-item"
+                  onClick={() => setMobileDrawerOpen(true)}
+                >
+                  <BarsOutlined />
+                  <span>More</span>
+                </div>
+              </div>
+              
+              <Button
+                type="primary"
+                shape="circle"
+                icon={<EditOutlined style={{ fontSize: '24px' }} />}
+                size="large"
+                className="mobile-fab-compose"
+                onClick={() => setIsComposeVisible(true)}
+              />
+            </>
+          )}
         </Layout >
       </InlineAlertContext.Provider>
     </ProtectedRoute >
