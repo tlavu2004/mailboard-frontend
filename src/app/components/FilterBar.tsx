@@ -7,7 +7,8 @@ import {
   SettingOutlined,
   CloudSyncOutlined,
   FilterOutlined,
-  SortAscendingOutlined
+  SortAscendingOutlined,
+  ClearOutlined
 } from '@ant-design/icons';
 
 export interface FilterState {
@@ -25,6 +26,7 @@ interface FilterBarProps {
   onSync?: () => void;
   onRefresh?: () => void;
   onSettings?: () => void;
+  onReset?: () => void;
   syncLoading?: boolean;
   refreshLoading?: boolean;
 }
@@ -37,6 +39,7 @@ export default function FilterBar({
   onSync,
   onRefresh,
   onSettings,
+  onReset,
   syncLoading = false,
   refreshLoading = false,
 }: FilterBarProps) {
@@ -118,6 +121,17 @@ export default function FilterBar({
           ]}
         />
       </div>
+
+      {onReset && (
+        <Button
+          type="text"
+          icon={<ClearOutlined />}
+          onClick={onReset}
+          className="text-gray-400 hover:text-red-500 text-xs flex items-center"
+        >
+          Reset
+        </Button>
+      )}
 
       {/* Actions Section */}
       <div className="ml-auto flex items-center gap-1 sm:gap-2">
