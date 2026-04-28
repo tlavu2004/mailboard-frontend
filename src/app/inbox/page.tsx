@@ -602,6 +602,9 @@ function InboxPageContent() {
     let cancelled = false;
     const init = async () => {
       console.log('[InboxPage] init: starting mailbox + email load sequence');
+      setSelectedEmail(null); // Ensure clean state on refresh
+      setShowMobileDetail(false);
+      
       const mailboxId = await loadMailboxes();
       if (cancelled) return;
 
@@ -761,36 +764,43 @@ function InboxPageContent() {
     }
   };
 
-  const handleRefresh = () => {
-    loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
-    message.success('Refreshed');
-  };
+   const handleRefresh = () => {
+     setSelectedEmail(null);
+     setShowMobileDetail(false);
+     loadEmails(selectedMailbox, 1, pageSize, filters.unread, filters.hasAttachment);
+     message.success('Refreshed');
+   };
 
-  const handleSync = async (mailboxId?: string) => {
-    setSyncLoading(true);
-    try {
-      const folderMap: Record<string, string> = {
-        INBOX: 'INBOX',
-        SPAM: '[Gmail]/Spam',
-        TRASH: '[Gmail]/Trash',
-        SENT: '[Gmail]/Sent Mail',
-        DRAFT: '[Gmail]/Drafts',
-        DRAFTS: '[Gmail]/Drafts',
-        IMPORTANT: '[Gmail]/Important',
-        STARRED: '[Gmail]/Starred',
-      };
-      const normalized = (mailboxId || selectedMailbox || 'INBOX').toUpperCase();
-      const syncFolder = folderMap[normalized] || mailboxId || selectedMailbox || 'INBOX';
-      await emailService.syncEmails(undefined, syncFolder);
-      message.success('Sync completed. Refreshing emails...');
-      await loadEmails(selectedMailbox);
-    } catch (error) {
-      console.error('Sync failed:', error);
-      message.error('Failed to sync emails from Gmail');
-    } finally {
-      setSyncLoading(false);
-    }
-  };
+   const handleSync = async (mailboxId?: string) => {
+     setSyncLoading(true);
+     try {
+       const folderMap: Record<string, string> = {
+         INBOX: 'INBOX',
+         SPAM: '[Gmail]/Spam',
+         TRASH: '[Gmail]/Trash',
+         SENT: '[Gmail]/Sent Mail',
+         DRAFT: '[Gmail]/Drafts',
+         DRAFTS: '[Gmail]/Drafts',
+         IMPORTANT: '[Gmail]/Important',
+         STARRED: '[Gmail]/Starred',
+       };
+       const normalized = (mailboxId || selectedMailbox || 'INBOX').toUpperCase();
+       const syncFolder = folderMap[normalized] || mailboxId || selectedMailbox || 'INBOX';
+       
+       // Close detail view during sync to show fresh list
+       setSelectedEmail(null);
+       setShowMobileDetail(false);
+       
+       await emailService.syncEmails(undefined, syncFolder);
+       message.success('Sync completed. Refreshing emails...');
+       await loadEmails(selectedMailbox);
+     } catch (error) {
+       console.error('Sync failed:', error);
+       message.error('Failed to sync emails from Gmail');
+     } finally {
+       setSyncLoading(false);
+     }
+   };
 
 
   useEffect(() => {
@@ -1531,7 +1541,7 @@ function InboxPageContent() {
                                             className="flex-shrink-0"
                                             style={{ backgroundColor: email.isRead ? '#f1f5f9' : '#e0e7ff', color: email.isRead ? '#64748b' : '#4f46e5', fontWeight: 600 }}
                                           >
-                                            {email.from.name ? email.from.name.charAt(0).toUpperCase() : '?'}
+                                            {email.from.name ? email.from.name.charAt(0).toUpperCase() : (email.from.email ? email.from.email.charAt(0).toUpperCase() : '?')}
                                           </Avatar>
 
                                           {/* Middle: Content */}
@@ -1540,7 +1550,42 @@ function InboxPageContent() {
                                               <div className="flex items-center gap-2 min-w-0">
                                                 {!email.isRead && <div className="unread-dot flex-shrink-0" />}
                                                 <Text strong={!email.isRead} className="mail-item-sender truncate">
-                                                  {email.from.name}
+                                                  {(() => {
+                                                    // V42: Super-Robust Sender Name Extraction
+                                                    const isMe = email.isFromMe || (email.accountEmail && email.from.email.toLowerCase() === email.accountEmail.toLowerCase());
+                                                    if (isMe) return 'You';
+                                                    
+                                                    let name = email.fromName || email.from.name;
+                                                    const emailAddr = email.from.email;
+                                                    
+                                                    // Cleanup name (Remove quotes and extract from "Name <email>")
+                                                    if (name) {
+                                                      name = name.replace(/^"|"$/g, '').trim();
+                                                      if (name.includes('<') && name.includes('>')) {
+                                                        const match = name.match(/^(.*?)\s*</);
+                                                        if (match && match[1]) name = match[1].trim();
+                                                      }
+                                                      name = name.replace(/^"|"$/g, '').trim();
+                                                    }
+                                                    
+                                                    // Priority 1: Backend Provided Name or Extracted Name
+                                                    if (name && name.toLowerCase() !== emailAddr.toLowerCase() && !name.includes('@')) return name;
+                                                    
+                                                    // Priority 2: Smart Brand Fallback
+                                                    const domain = emailAddr.split('@')[1];
+                                                    const commonProviders = ['gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'icloud.com', 'aol.com', 'protonmail.com'];
+                                                    if (domain && !commonProviders.includes(domain.toLowerCase())) {
+                                                      const parts = domain.split('.');
+                                                      let brand = parts[parts.length - 2];
+                                                      if (brand === 'com' || brand === 'edu' || brand === 'org' || brand === 'net' || brand === 'io' || brand === 'ai') {
+                                                        brand = parts[parts.length - 3] || brand;
+                                                      }
+                                                      if (brand) return brand.charAt(0).toUpperCase() + brand.slice(1).toLowerCase();
+                                                    }
+                                                    
+                                                    // Priority 3: Username fallback
+                                                    return emailAddr.split('@')[0];
+                                                  })()}
                                                 </Text>
                                                 <div className="flex items-center gap-1 flex-shrink-0">
                                                   {email.hasPhysicalAttachments && (

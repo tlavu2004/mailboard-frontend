@@ -132,6 +132,36 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
   const [iframeHeight, setIframeHeight] = React.useState<number>(400);
   const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
 
+  const formatRecipientDisplay = (r: any, accountEmail?: string) => {
+    let rawEmail = (typeof r === 'string' ? r : (r.email || '')).trim();
+    let rawName = (typeof r === 'string' ? '' : (r.name || '')).trim();
+    
+    let emailAddr = rawEmail;
+    let name = rawName;
+    
+    if (emailAddr.includes('<') && emailAddr.includes('>')) {
+      const match = emailAddr.match(/^(.*?)\s*<(.*?)>/);
+      if (match) {
+        if (!name) name = match[1].trim();
+        emailAddr = match[2].trim();
+      }
+    }
+    
+    emailAddr = emailAddr.replace(/^["'<>]|["'<>]$/g, '').trim();
+    if (name) {
+      name = name.replace(/^["'<>]|["'<>]$/g, '').trim();
+      if (name.includes('@') || name.toLowerCase() === emailAddr.toLowerCase()) name = '';
+    }
+    
+    const isMe = (accountEmail && emailAddr.toLowerCase() === accountEmail.toLowerCase()) ||
+                 (name && name.toLowerCase() === 'you');
+    
+    if (isMe) return `You (${emailAddr})`;
+    if (name && name !== emailAddr && !name.includes('@')) return `${name} (${emailAddr})`;
+    
+    return emailAddr;
+  };
+
   const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
   const inspectHtml = async () => {
@@ -751,40 +781,85 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                                 />
                                 <div>
                                     <div style={{ fontWeight: 600, color: '#202124', fontSize: '14px' }}>
-                                        {email.from?.name || email.from?.email || email.sender}
+                                        {(() => {
+                                          // V42: Super-Robust Sender Name Extraction
+                                          const isMe = email.isFromMe || (email.accountEmail && sender.email.toLowerCase() === email.accountEmail.toLowerCase());
+                                          const emailAddr = (sender.email || '').replace(/^["'<>]|["'<>]$/g, '').trim();
+                                          
+                                          if (isMe) return `You (${emailAddr})`;
+                                          
+                                          let name = email.fromName || sender.name;
+                                          
+                                          // Cleanup name
+                                          if (name) {
+                                            name = name.replace(/^["'<>]|["'<>]$/g, '').trim();
+                                            if (name.includes('<') && name.includes('>')) {
+                                              const match = name.match(/^(.*?)\s*</);
+                                              if (match && match[1]) name = match[1].trim();
+                                            }
+                                            name = name.replace(/^["'<>]|["'<>]$/g, '').trim();
+                                          }
+                                          
+                                          // Priority 1: Real Name
+                                          if (name && name.toLowerCase() !== emailAddr.toLowerCase() && !name.includes('@')) return `${name} (${emailAddr})`;
+                                          
+                                          // Priority 2: Smart Brand Fallback
+                                          const domain = emailAddr.split('@')[1];
+                                          const commonProviders = ['gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'icloud.com', 'aol.com', 'protonmail.com'];
+                                          if (domain && !commonProviders.includes(domain.toLowerCase())) {
+                                            const parts = domain.split('.');
+                                            let brand = parts[parts.length - 2];
+                                            if (['com', 'edu', 'org', 'net', 'io', 'ai'].includes(brand)) {
+                                              brand = parts[parts.length - 3] || brand;
+                                            }
+                                            if (brand) {
+                                              const prettyBrand = brand.charAt(0).toUpperCase() + brand.slice(1).toLowerCase();
+                                              return `${prettyBrand} (${emailAddr})`;
+                                            }
+                                          }
+                                          
+                                          return emailAddr;
+                                        })()}
                                     </div>
                                     <div style={{ fontSize: '12px', color: '#5f6368' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                             <div style={{ fontWeight: 600, color: '#5f6368', fontSize: '12px' }}>To:</div>
                                             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                                {toList && toList.length > 0 ? (
-                                                    toList.map((r: any, idx: number) => (
-                                                        <Tag key={r.email || r.name || idx} style={{ margin: 0 }}>
-                                                            {typeof r === 'string' ? r : (r.name || r.email)}
-                                                        </Tag>
-                                                    ))
-                                                ) : (
-                                                    <span>me</span>
-                                                )}
-                                            </div>
+                                                {(() => {
 
-                                            {ccList && ccList.length > 0 && (
-                                                <Popover
-                                                    content={
-                                                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: 420 }}>
-                                                            {ccList.map((r: any, idx: number) => (
-                                                                <Tag key={r.email || r.name || idx} style={{ margin: 0 }}>
-                                                                    {typeof r === 'string' ? r : (r.name || r.email)}
-                                                                </Tag>
-                                                            ))}
-                                                        </div>
-                                                    }
-                                                    title={`Cc (${ccList.length})`}
-                                                    trigger="click"
-                                                >
-                                                    <Tag color="default" style={{ cursor: 'pointer', marginLeft: 8 }}>Cc: {ccList.length}</Tag>
-                                                </Popover>
-                                            )}
+                                                    return (
+                                                        <>
+                                                            {toList && toList.length > 0 ? (
+                                                                toList.map((r: any, idx: number) => (
+                                                                    <Tag key={r.email || r.name || idx} style={{ margin: 0 }}>
+                                                                        {formatRecipientDisplay(r, email.accountEmail)}
+                                                                    </Tag>
+                                                                ))
+                                                            ) : (
+                                                                <span>me</span>
+                                                            )}
+
+                                                            {ccList && ccList.length > 0 && (
+                                                                <Popover
+                                                                    content={
+                                                                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: 420 }}>
+                                                                            {ccList.map((r: any, idx: number) => (
+                                                                                <Tag key={r.email || r.name || idx} style={{ margin: 0 }}>
+                                                                                    {formatRecipientDisplay(r, email.accountEmail)}
+                                                                                </Tag>
+                                                                            ))}
+                                                                        </div>
+                                                                    }
+                                                                    title={`Cc (${ccList.length})`}
+                                                                    trigger="click"
+                                                                >
+                                                                    <Tag color="default" style={{ cursor: 'pointer', marginLeft: 8 }}>Cc: {ccList.length}</Tag>
+                                                                </Popover>
+                                                            )}
+                                                        </>
+                                                    );
+                                                })()}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
