@@ -945,7 +945,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             </div>
           </div>
 
-          <Space wrap size={6} className="email-detail-actions" style={{ marginTop: '6px', position: 'relative', zIndex: 2000, pointerEvents: 'auto' }}>
+          <Space wrap size={6} className="email-detail-actions" style={{ marginTop: '6px', marginBottom: '16px', position: 'relative', zIndex: 2000, pointerEvents: 'auto' }}>
             <Button size="small" type="primary" onClick={() => { console.log('[EmailDetail] Reply clicked', email?.id); onReply && onReply(email); }}>
               Reply
             </Button>
@@ -1033,7 +1033,8 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
               extra={<Button type="text" size="small" onClick={() => toggleSummary(false)}>×</Button>}
               style={{
                 borderLeft: email.summarySource === 'GEMINI' ? '4px solid #48bb78' : '4px solid #667eea',
-                background: '#fcfdff'
+                background: '#fcfdff',
+                marginBottom: '16px'
               }}
             >
               {loadingSummary ? (
