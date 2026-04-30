@@ -138,8 +138,17 @@ function KanbanColumn({ id, columnKey, label, color, cards, onRefresh, onSnooze,
           <div className="mt-10 flex flex-col items-center justify-center">
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={id === 'snoozed' ? 'Drag cards here' : 'No items'}
-              style={{ opacity: 0.5 }}
+              description={
+                <div style={{ color: '#94a3b8' }}>
+                  <p style={{ fontSize: '14px', margin: 0 }}>
+                    {columnKey === 'INBOX' ? 'All caught up!' : `${label} is clear!`}
+                  </p>
+                  <p style={{ fontSize: '12px', margin: 0 }}>
+                    Drag cards here to organize
+                  </p>
+                </div>
+              }
+              style={{ opacity: 0.8 }}
             />
           </div>
         )}

@@ -159,56 +159,7 @@ function InboxPageContent() {
   // email we don't re-create it). We intentionally do NOT persist dismissals so
   // the banner will reappear each time the user opens the email.
   
-  // WebSocket Connection (Stabilized)
-  const userIdRef = useRef(user?.id);
-  useEffect(() => { userIdRef.current = user?.id; }, [user?.id]);
   const handleNotificationRef = useRef<any>(null);
-
-
-  useEffect(() => {
-    const userId = userIdRef.current;
-    if (!userId) return;
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = process.env.NEXT_PUBLIC_API_URL 
-      ? process.env.NEXT_PUBLIC_API_URL.replace(/^https?:\/\//, '') 
-      : 'localhost:8080/api/v1';
-    
-    // Ensure we don't have double /api/v1 or missing parts
-    const cleanHost = host.split('/api/v1')[0]; 
-    const wsUrl = `${protocol}//${cleanHost}/ws/notifications?userId=${userId}`;
-    
-    console.log('[WS] Connecting to:', wsUrl);
-    const socket = new WebSocket(wsUrl);
-
-    socket.onopen = () => {
-      console.log('[WS] Connected successfully');
-    };
-
-    socket.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        console.log('[WS] Received message:', msg);
-        if (handleNotificationRef.current) handleNotificationRef.current(msg);
-      } catch (err: any) {
-        console.error('[WS] Error parsing message:', err);
-      }
-    };
-
-    socket.onclose = (e) => {
-      console.log('[WS] Connection closed:', e.code, e.reason);
-    };
-
-    socket.onerror = (err: any) => {
-      console.error('[WS] Socket error:', err);
-    };
-
-    return () => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.close();
-      }
-    };
-  }, [user?.id]); 
 
   useEffect(() => {
     if (!selectedEmail) {
@@ -249,6 +200,7 @@ function InboxPageContent() {
   const [searchScores, setSearchScores] = useState<Record<string, number>>({});
   const [searchMode, setSearchMode] = useState<'semantic' | 'text'>('semantic');
   const [syncLoading, setSyncLoading] = useState(false);
+  const [emailsError, setEmailsError] = useState<string | null>(null);
 
   // Custom Confirmation Modal State
   const [confirmModal, setConfirmModal] = useState<{
@@ -629,7 +581,10 @@ function InboxPageContent() {
   const loadEmails = useCallback(async (p: number, silent: boolean = false) => {
     if (!selectedMailbox) return;
     const requestId = ++loadCountRef.current;
-    if (!silent) setEmailsLoading(true);
+    if (!silent) {
+      setEmailsLoading(true);
+      setEmailsError(null);
+    }
     try {
       const data = await emailService.getEmailsByMailbox(selectedMailbox, p, pageSize, filters, sortLayers);
       // V48: Only update if this is still the most recent request
@@ -640,6 +595,7 @@ function InboxPageContent() {
       }
     } catch (err: any) {
       console.error('Failed to load emails:', err);
+      if (!silent) setEmailsError(err.message || 'Failed to fetch emails. Please check your connection.');
     } finally {
       if (!silent && requestId === loadCountRef.current) {
         setEmailsLoading(false);
@@ -1827,7 +1783,7 @@ function InboxPageContent() {
                   <div className="flex h-full w-full overflow-hidden relative">
                     {/* Left Column: List or Kanban */}
                     <div
-                      className={`flex flex-col bg-white border-r border-gray-100 ${showMobileDetail ? (viewMode === 'list' ? 'hidden-mobile' : 'hidden') : 'flex w-full'}`}
+                      className={`flex flex-col bg-white border-r border-gray-100 ${showMobileDetail ? 'hidden lg:flex' : 'flex w-full'}`}
                       style={{
                         width: viewMode === 'list' ? (selectedEmail ? `${listWidth}px` : '100%') : '100%',
                         transition: isResizing ? 'none' : 'width 0.3s ease'
@@ -1841,9 +1797,68 @@ function InboxPageContent() {
                             </Title>
                           </div>
                           <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-2 inbox-list-scroll" style={{ paddingLeft: '24px', paddingRight: '12px' }}>
-                            {emailsLoading ? <div className="p-12 text-center"><Spin /></div> : (
+                            {emailsLoading ? (
+                              <div className="p-12 text-center">
+                                <Spin size="large" />
+                                <p style={{ marginTop: '16px', color: '#64748b' }}>Fetching your emails...</p>
+                              </div>
+                            ) : emailsError ? (
+                              <div className="p-12 text-center">
+                                <Empty
+                                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                  description={
+                                    <div style={{ color: '#ef4444' }}>
+                                      <p style={{ fontSize: '16px', fontWeight: 500, marginBottom: '4px' }}>Oops! Something went wrong</p>
+                                      <p style={{ fontSize: '14px', color: '#64748b' }}>{emailsError}</p>
+                                      <Button 
+                                        type="primary" 
+                                        danger
+                                        ghost 
+                                        size="small" 
+                                        icon={<ReloadOutlined />}
+                                        onClick={() => loadEmails(1)}
+                                        style={{ marginTop: '16px', borderRadius: '8px' }}
+                                      >
+                                        Try Again
+                                      </Button>
+                                    </div>
+                                  }
+                                />
+                              </div>
+                            ) : (
                               <>
                                 <List
+                                  locale={{
+                                    emptyText: (
+                                      <Empty
+                                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                        description={
+                                          <div style={{ color: '#64748b' }}>
+                                            <p style={{ fontSize: '16px', fontWeight: 500, marginBottom: '4px' }}>
+                                              {searchQuery ? 'No matching emails found' : `${selectedMailboxTitle} is clear!`}
+                                            </p>
+                                            <p style={{ fontSize: '14px' }}>
+                                              {searchQuery 
+                                                ? 'Try adjusting your search query or filters' 
+                                                : `There are no emails in your ${selectedMailboxTitle.toLowerCase()}.`}
+                                            </p>
+                                            {!searchQuery && (
+                                              <Button 
+                                                type="primary" 
+                                                ghost 
+                                                size="small" 
+                                                icon={<ReloadOutlined />}
+                                                onClick={() => loadEmails(1)}
+                                                style={{ marginTop: '16px', borderRadius: '8px' }}
+                                              >
+                                                Check for new emails
+                                              </Button>
+                                            )}
+                                          </div>
+                                        }
+                                      />
+                                    )
+                                  }}
                                   dataSource={emails}
                                   renderItem={(email, index) => (
                                     <div id={`email-item-${email.id}`} key={email.id}>
@@ -2055,7 +2070,7 @@ function InboxPageContent() {
 
                     {/* Right Column: Detail (List View only) */}
                     {selectedEmail && viewMode === 'list' && (
-                      <div className={`flex-1 bg-white overflow-y-auto ${!showMobileDetail ? 'hidden-mobile flex' : 'absolute inset-0 z-50 flex md:relative md:flex'}`}>
+                      <div className={`flex-1 overflow-y-auto ${!showMobileDetail ? 'hidden lg:flex' : 'flex w-full absolute inset-0 z-50 lg:relative lg:w-auto'}`}>
                         <EmailDetail
                           email={selectedEmail}
                           onBack={() => {
@@ -2078,7 +2093,7 @@ function InboxPageContent() {
                           loadingSummary={loadingSummary}
                           onDownloadAttachment={handleDownloadAttachment}
                           showMobileDetail={showMobileDetail}
-                          showBackButton={true}
+                          showBackButton={showMobileDetail}
                           isRestoring={isRestoring === (selectedEmail?.id || '')}
                         />
                       </div>

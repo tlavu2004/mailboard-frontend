@@ -62,7 +62,9 @@ export const emailService = {
       url += `&sort=receivedDate:desc`;
     }
 
-    const response = await apiClient.get(url);
+    const response = await apiClient.get(url, {
+      params: { _t: Date.now() }
+    });
     return response.data;
   },
 

@@ -694,11 +694,17 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
 
   if (!email) {
     return (
-      <Empty
-        description="Select an email to view details"
-        style={{ marginTop: '20%' }}
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-      />
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fcfcfc', borderLeft: '1px solid #f1f3f4' }}>
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={
+            <div style={{ color: '#94a3b8' }}>
+              <p style={{ fontSize: '18px', fontWeight: 500, marginBottom: '4px' }}>No conversation selected</p>
+              <p style={{ fontSize: '14px' }}>Choose an email from the list to read its content</p>
+            </div>
+          }
+        />
+      </div>
     );
   }
 
@@ -774,55 +780,56 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
   return (
     <div
       className={className}
-      style={{ ...style, height: '100%', overflowY: 'auto', backgroundColor: '#f8fafc', padding: '12px' }}
+      style={{ ...style, height: '100%', width: '100%', overflowY: 'auto', backgroundColor: '#f8fafc', padding: '12px' }}
     >
-      {showBackButton && (
-        <Button
-          icon={<ArrowLeftOutlined />}
-          onClick={onBack}
-          style={{ margin: '8px 16px' }}
-          className="mobile-back-button"
-        >
-          Back
-        </Button>
-      )}
-
-      <div style={{ width: '100%', margin: 0, padding: showMobileDetail ? '0 12px 12px' : '0 12px' }}>
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          {inlineAlertMessage && (
-            <div style={{ width: '100%' }}>
-              <Alert
-                message={inlineAlertMessage}
-                type="warning"
-                showIcon
-                closable
-                onClose={() => onInlineAlertClose && onInlineAlertClose()}
-                style={{ marginBottom: 6 }}
-              />
-            </div>
-          )}
-
-          {mailboxId === 'TRASH' && email.deletedAt && (
-            <div style={{ width: '100%' }}>
-              <Alert
-                message={
-                  <Space>
-                    <DeleteOutlined />
-                    <Text strong>This email is in Trash.</Text>
-                    <Text type="secondary">It will be permanently deleted in: </Text>
-                    <Tag color="error" style={{ fontWeight: 'bold' }}>{getTimeRemaining(email.deletedAt)}</Tag>
-                  </Space>
-                }
-                type="info"
-                showIcon={false}
-                style={{ marginBottom: 6, borderRadius: '8px', border: '1px solid #ffccc7', backgroundColor: '#fff2f0' }}
-              />
-            </div>
-          )}
-
-          <div style={{ marginBottom: '8px' }}>
-            <Title level={3} style={{ marginTop: '12px', marginBottom: '8px' }}>{email.subject}</Title>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', marginBottom: '12px' }}>
+        {showBackButton && (
+          <div className="lg:hidden" style={{ flexShrink: 0 }}>
+            <Button
+              icon={<ArrowLeftOutlined />}
+              onClick={onBack}
+              className="mobile-back-button"
+            >
+              Back
+            </Button>
           </div>
+        )}
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {inlineAlertMessage && (
+            <Alert
+              message={inlineAlertMessage}
+              type="warning"
+              showIcon
+              closable
+              onClose={() => onInlineAlertClose && onInlineAlertClose()}
+              style={{ borderRadius: '8px' }}
+            />
+          )}
+
+          {mailboxId === 'TRASH' && email.deletedAt && !inlineAlertMessage && (
+            <Alert
+              message={
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <Space size={4}>
+                    <DeleteOutlined />
+                    <Text strong style={{ fontSize: '13px' }}>Trash:</Text>
+                  </Space>
+                  <Text type="secondary" style={{ fontSize: '13px' }}>Deleted in:</Text>
+                  <Tag color="error" style={{ fontWeight: 'bold', margin: 0 }}>{getTimeRemaining(email.deletedAt)}</Tag>
+                </div>
+              }
+              type="info"
+              showIcon={false}
+              style={{ borderRadius: '8px', border: '1px solid #ffccc7', backgroundColor: '#fff2f0' }}
+            />
+          )}
+        </div>
+      </div>
+
+      <div style={{ padding: '0 4px' }}>
+        <Title level={3} style={{ marginTop: '4px', marginBottom: '16px' }}>{email.subject}</Title>
+      </div>
 
           {/* V28.4: Metadata move up (Below Title, Above Buttons) */}
           <div style={{ width: '100%' }}>
@@ -1078,8 +1085,16 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                       </div>
                     </div>
                   ) : email.id ? (
-                    <div style={{ color: '#5f6368' }}>
-                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No content available for this email" />
+                    <div style={{ padding: '40px 0' }}>
+                      <Empty 
+                        image={Empty.PRESENTED_IMAGE_SIMPLE} 
+                        description={
+                          <div style={{ color: '#94a3b8' }}>
+                            <p style={{ fontSize: '15px', fontWeight: 500, marginBottom: '4px' }}>No content available</p>
+                            <p style={{ fontSize: '13px' }}>This email has no body or preview text.</p>
+                          </div>
+                        } 
+                      />
                     </div>
                   ) : (
                     <Spin size="large" tip="Processing high-fidelity content..." />
@@ -1175,8 +1190,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
               </div>
             </Card>
           )}
-        </Space>
-      </div>
+
     </div>
   );
 };
