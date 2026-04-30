@@ -121,13 +121,16 @@ function InboxPageContent() {
     selectedMailboxRef.current = selectedMailbox;
   }, [selectedMailbox]);
 
-  // Sync state with URL
   useEffect(() => {
     const mailboxParam = searchParams.get('mailbox');
     if (mailboxParam && mailboxParam !== selectedMailbox) {
+      // V48.5: Clear list immediately when URL changes to prevent stale data display
+      setEmails([]);
+      setTotalEmails(0);
+      setSelectedEmail(null);
       setSelectedMailbox(mailboxParam);
     }
-  }, [searchParams]);
+  }, [searchParams, selectedMailbox]);
 
   const [emails, setEmails] = useState<Email[]>([]);
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
