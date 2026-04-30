@@ -931,6 +931,12 @@ function InboxPageContent() {
     }
     console.log('[InboxPage] WebSocket notification received:', msg);
     
+    if (msg?.type === 'DELETED_EMAILS') {
+      const emailIds = msg.emailIds || (msg.emailId ? [msg.emailId] : []);
+      setEmails(prev => prev.filter(e => !emailIds.includes(String(e.id)) && !emailIds.includes(Number(e.id))));
+      return;
+    }
+
     if (msg?.type === 'NEW_EMAILS' || msg?.type === 'UPDATED_EMAILS') {
       const emailIds = msg.emailIds || (msg.emailId ? [msg.emailId] : []);
       if (emailIds.length === 0) return;

@@ -175,8 +175,22 @@ export default function KanbanBoard({
 
   // Handle real-time notifications
   const handleNotification = useCallback(async (msg: any) => {
-    if (msg.type === 'NEW_EMAILS') {
-      message.info('New emails received! Updating Kanban...');
+    if (msg.type === 'DELETED_EMAILS') {
+      const emailIds = msg.emailIds || (msg.emailId ? [msg.emailId] : []);
+      setColumns(prev => {
+        const next = { ...prev };
+        Object.keys(next).forEach(key => {
+          next[key] = next[key].filter(c => !emailIds.includes(String(c.id)));
+        });
+        return next;
+      });
+      return;
+    }
+
+    if (msg.type === 'NEW_EMAILS' || msg.type === 'UPDATED_EMAILS') {
+      if (msg.type === 'NEW_EMAILS') {
+        message.info('New emails received! Updating Kanban...');
+      }
       try {
         await fetchBoard();
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Typography, Space, Avatar, Card, Empty, Spin, Popover, Tag, Tooltip, message, Alert, Popconfirm } from 'antd';
+import { Button, Typography, Space, Avatar, Card, Empty, Spin, Popover, Tag, Tooltip, message, Alert, Modal } from 'antd';
 import {
   ArrowLeftOutlined,
   StarOutlined,
@@ -971,26 +971,14 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             </Popover>
 
             {canDelete && (
-              <Popconfirm
-                title="Delete email permanently?"
-                description="This action cannot be undone and will remove the message from your provider."
-                onConfirm={() => onDelete({ stopPropagation: () => { } } as any, email)}
-                okText="Delete"
-                cancelText="Cancel"
-                okButtonProps={{ danger: true }}
-                disabled={email.mailboxId !== 'TRASH'}
+              <Button
+                size="small"
+                icon={<DeleteOutlined />}
+                danger
+                onClick={(e) => onDelete(e, email)}
               >
-                <Button
-                  size="small"
-                  icon={<DeleteOutlined />}
-                  danger
-                  onClick={(e) => {
-                    if (email.mailboxId !== 'TRASH') onDelete(e, email);
-                  }}
-                >
-                  {email.mailboxId === 'TRASH' ? 'Delete Permanently' : 'Delete'}
-                </Button>
-              </Popconfirm>
+                {email.mailboxId === 'TRASH' ? 'Delete Permanently' : 'Delete'}
+              </Button>
             )}
 
             {canRestore && (
