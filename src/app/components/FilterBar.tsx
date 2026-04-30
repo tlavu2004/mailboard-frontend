@@ -1,4 +1,4 @@
-import { Button, Divider, Select, Tag, Dropdown, Menu, Space, Tooltip } from 'antd';
+import { Button, Divider, Select, Tag, Dropdown, Menu, Space, Tooltip, Popconfirm } from 'antd';
 import {
   ReloadOutlined,
   SettingOutlined,
@@ -10,7 +10,8 @@ import {
   ArrowUpOutlined,
   ArrowDownOutlined,
   CloseOutlined,
-  HolderOutlined
+  HolderOutlined,
+  DeleteOutlined
 } from '@ant-design/icons';
 import {
   DndContext,
@@ -49,6 +50,7 @@ interface FilterBarProps {
   onRefresh?: () => void;
   onSettings?: () => void;
   onReset?: () => void;
+  onEmptyTrash?: () => void;
   syncLoading?: boolean;
   refreshLoading?: boolean;
 }
@@ -134,6 +136,7 @@ export default function FilterBar({
   onRefresh,
   onSettings,
   onReset,
+  onEmptyTrash,
   syncLoading = false,
   refreshLoading = false,
 }: FilterBarProps) {
@@ -302,6 +305,19 @@ export default function FilterBar({
               className="text-gray-400 hover:text-blue-600"
             />
           </Tooltip>
+        )}
+        
+        {onEmptyTrash && (
+          <Button
+            type="primary"
+            danger
+            size="small"
+            icon={<DeleteOutlined />}
+            onClick={onEmptyTrash}
+            className="ml-2 shadow-sm rounded-lg"
+          >
+            Empty
+          </Button>
         )}
       </div>
     </div>

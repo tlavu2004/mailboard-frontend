@@ -974,16 +974,12 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
                       const emailId = originalEmail?.id;
                       
                       if (draftId || emailId) {
-                          try {
-                              setLoading(true);
-                              await emailService.deleteDraft(draftId || 'undefined', emailId);
-                              message.success('Draft discarded');
-                              onDiscard?.();
-                          } catch (err) {
-                              console.error('Failed to discard draft:', err);
-                          } finally {
-                              setLoading(false);
-                          }
+                          // Fire and forget (sync in background)
+                          emailService.deleteDraft(draftId || 'undefined', emailId)
+                              .then(() => onDiscard?.())
+                              .catch(err => console.error('Failed to discard draft:', err));
+                          
+                          message.success('Draft discarded');
                       }
                       onCancel();
                   }} 

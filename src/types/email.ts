@@ -53,6 +53,8 @@ export interface Email {
   createdAt: string;
   summary?: string;
   summarySource?: string;
+  deletedAt?: string;
+  previousStatus?: string;
 }
 
 export interface ApiResponse<T> {

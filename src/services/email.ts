@@ -274,6 +274,13 @@ export const emailService = {
     });
   },
 
+  deleteEmailPermanently: async (emailId: string): Promise<void> => {
+    if (USE_MOCK_API) {
+      return;
+    }
+    await apiClient.delete(`emails/${emailId}`);
+  },
+
   // Repair corrupted email bodies
   repairEmails: async (): Promise<void> => {
     if (USE_MOCK_API) {
@@ -293,5 +300,13 @@ export const emailService = {
   deleteDraft: async (draftId: string, emailId?: string | number): Promise<void> => {
     const url = `emails/draft/${draftId || 'undefined'}${emailId ? `?emailId=${emailId}` : ''}`;
     await apiClient.delete(url);
+  },
+
+  // Empty Trash folder
+  emptyTrash: async (): Promise<void> => {
+    if (USE_MOCK_API) {
+      return;
+    }
+    await apiClient.delete('mailboxes/TRASH/empty');
   },
 };

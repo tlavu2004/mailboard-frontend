@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Typography, Space, Avatar, Card, Empty, Spin, Popover, Tag, Tooltip, message, Alert } from 'antd';
+import { Button, Typography, Space, Avatar, Card, Empty, Spin, Popover, Tag, Tooltip, message, Alert, Popconfirm } from 'antd';
 import {
   ArrowLeftOutlined,
   StarOutlined,
@@ -23,13 +23,25 @@ import SnoozePopover from './SnoozePopover';
 
 const { Title, Text } = Typography;
 
-const parseAsLocalDate = (value?: string): Date => {
-  if (!value) return new Date();
-  const trimmed = value.trim();
-  const hasTimezone = /([zZ]|[+\-]\d{2}:?\d{2})$/.test(trimmed);
-  const normalized = hasTimezone ? trimmed : `${trimmed}Z`;
-  const parsed = new Date(normalized);
-  return Number.isNaN(parsed.getTime()) ? new Date(trimmed) : parsed;
+const parseAsLocalDate = (dateStr?: string): Date => {
+  if (!dateStr) return new Date();
+  try {
+    let normalized = dateStr.trim();
+    if (normalized.includes(' ')) normalized = normalized.replace(' ', 'T');
+    
+    const date = new Date(normalized);
+    if (!isNaN(date.getTime())) return date;
+    
+    // Fallback for formats that need 'Z'
+    if (!normalized.includes('Z') && !normalized.includes('+')) {
+      const withZ = new Date(normalized + 'Z');
+      if (!isNaN(withZ.getTime())) return withZ;
+    }
+    
+    return new Date(normalized);
+  } catch (e) {
+    return new Date();
+  }
 };
 
 interface EmailDetailProps {
@@ -53,6 +65,7 @@ interface EmailDetailProps {
   style?: React.CSSProperties;
   inlineAlertMessage?: string;
   onInlineAlertClose?: () => void;
+  isRestoring?: boolean;
 }
 
 const EmailDetail: React.FC<EmailDetailProps> = ({
@@ -76,6 +89,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
   style,
   inlineAlertMessage,
   onInlineAlertClose,
+  isRestoring = false,
 }) => {
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
@@ -127,7 +141,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
   const mailboxId = (email?.mailboxId || '').toUpperCase();
   const canRestore = mailboxId === 'TRASH' || mailboxId === 'SPAM';
   const canMarkSpam = mailboxId !== 'SPAM' && mailboxId !== 'TRASH' && mailboxId !== 'SENT' && mailboxId !== 'DRAFTS' && mailboxId !== 'DRAFT';
-  const canDelete = mailboxId !== 'TRASH';
+  const canDelete = true;
 
   const [iframeHeight, setIframeHeight] = React.useState<number>(400);
   const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
@@ -135,10 +149,10 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
   const formatRecipientDisplay = (r: any, accountEmail?: string) => {
     let rawEmail = (typeof r === 'string' ? r : (r.email || '')).trim();
     let rawName = (typeof r === 'string' ? '' : (r.name || '')).trim();
-    
+
     let emailAddr = rawEmail;
     let name = rawName;
-    
+
     if (emailAddr.includes('<') && emailAddr.includes('>')) {
       const match = emailAddr.match(/^(.*?)\s*<(.*?)>/);
       if (match) {
@@ -146,20 +160,41 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
         emailAddr = match[2].trim();
       }
     }
-    
+
     emailAddr = emailAddr.replace(/^["'<>]|["'<>]$/g, '').trim();
     if (name) {
       name = name.replace(/^["'<>]|["'<>]$/g, '').trim();
       if (name.includes('@') || name.toLowerCase() === emailAddr.toLowerCase()) name = '';
     }
-    
+
     const isMe = (accountEmail && emailAddr.toLowerCase() === accountEmail.toLowerCase()) ||
-                 (name && name.toLowerCase() === 'you');
-    
+      (name && name.toLowerCase() === 'you');
+
     if (isMe) return `You (${emailAddr})`;
     if (name && name !== emailAddr && !name.includes('@')) return `${name} (${emailAddr})`;
-    
+
     return emailAddr;
+  };
+
+  const getTimeRemaining = (deletedAt?: string) => {
+    if (!deletedAt) return null;
+    try {
+      const deletedDate = new Date(deletedAt);
+      const expiryDate = new Date(deletedDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const now = new Date();
+      const diff = expiryDate.getTime() - now.getTime();
+
+      if (diff <= 0) return "Soon";
+
+      const days = Math.floor(diff / (24 * 60 * 60 * 1000));
+      const hours = Math.floor((diff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+      const mins = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000));
+      const secs = Math.floor((diff % (60 * 1000)) / 1000);
+
+      return `${days}d ${hours}h ${mins}m ${secs}s`;
+    } catch (e) {
+      return null;
+    }
   };
 
   const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -710,262 +745,313 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
     }).filter(Boolean).join(', ');
   };
 
-    const [showSummary, setShowSummary] = React.useState<boolean>(() => {
-        if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('mb:showSummary');
-            return saved !== 'false'; // Default to true if not set
-        }
-        return true;
-    });
+  const [showSummary, setShowSummary] = React.useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('mb:showSummary');
+      return saved !== 'false'; // Default to true if not set
+    }
+    return true;
+  });
 
-    const toggleSummary = (val: boolean) => {
-        setShowSummary(val);
-        if (typeof window !== 'undefined') {
-            localStorage.setItem('mb:showSummary', String(val));
-        }
-    };
+  const toggleSummary = (val: boolean) => {
+    setShowSummary(val);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('mb:showSummary', String(val));
+    }
+  };
 
-    const handleSummarizeClick = () => {
-        if (!showSummary) {
-            toggleSummary(true);
-        }
-        
-        // If no summary yet OR it's not from Gemini, trigger backend summarization
-        if (!email.summary || email.summarySource !== 'GEMINI') {
-            onSummarize && onSummarize(email);
-        }
-    };
+  const handleSummarizeClick = () => {
+    if (!showSummary) {
+      toggleSummary(true);
+    }
 
-    return (
-        <div
-            className={className}
-            style={{ ...style, height: '100%', overflowY: 'auto', backgroundColor: '#f8fafc', padding: '12px' }}
+    // If no summary yet OR it's not from Gemini, trigger backend summarization
+    if (!email.summary || email.summarySource !== 'GEMINI') {
+      onSummarize && onSummarize(email);
+    }
+  };
+
+  return (
+    <div
+      className={className}
+      style={{ ...style, height: '100%', overflowY: 'auto', backgroundColor: '#f8fafc', padding: '12px' }}
+    >
+      {showBackButton && (
+        <Button
+          icon={<ArrowLeftOutlined />}
+          onClick={onBack}
+          style={{ margin: '8px 16px' }}
+          className="mobile-back-button"
         >
-            {showBackButton && (
+          Back
+        </Button>
+      )}
+
+      <div style={{ width: '100%', margin: 0, padding: showMobileDetail ? '0 12px 12px' : '0 12px' }}>
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          {inlineAlertMessage && (
+            <div style={{ width: '100%' }}>
+              <Alert
+                message={inlineAlertMessage}
+                type="warning"
+                showIcon
+                closable
+                onClose={() => onInlineAlertClose && onInlineAlertClose()}
+                style={{ marginBottom: 6 }}
+              />
+            </div>
+          )}
+
+          {mailboxId === 'TRASH' && email.deletedAt && (
+            <div style={{ width: '100%' }}>
+              <Alert
+                message={
+                  <Space>
+                    <DeleteOutlined />
+                    <Text strong>This email is in Trash.</Text>
+                    <Text type="secondary">It will be permanently deleted in: </Text>
+                    <Tag color="error" style={{ fontWeight: 'bold' }}>{getTimeRemaining(email.deletedAt)}</Tag>
+                  </Space>
+                }
+                type="info"
+                showIcon={false}
+                style={{ marginBottom: 6, borderRadius: '8px', border: '1px solid #ffccc7', backgroundColor: '#fff2f0' }}
+              />
+            </div>
+          )}
+
+          <div style={{ marginBottom: '8px' }}>
+            <Title level={3} style={{ marginTop: '12px', marginBottom: '8px' }}>{email.subject}</Title>
+          </div>
+
+          {/* V28.4: Metadata move up (Below Title, Above Buttons) */}
+          <div style={{ width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <Avatar
+                  icon={<UserOutlined />}
+                  style={{ backgroundColor: '#1a73e8' }}
+                  size={40}
+                />
+                <div>
+                  <div style={{ fontWeight: 600, color: '#202124', fontSize: '14px' }}>
+                    {(() => {
+                      const isDraftOrSent = mailboxId === 'DRAFTS' || mailboxId === 'SENT' || mailboxId === 'TRASH';
+                      const isMe = email.isFromMe || (email.accountEmail && sender.email.toLowerCase() === email.accountEmail.toLowerCase());
+                      const emailAddr = (sender.email || '').replace(/^["'<>]|["'<>]$/g, '').trim();
+
+                      // If it's a draft, we usually want to see who we are sending it TO in the main header
+                      if (mailboxId === 'DRAFTS' && toList && toList.length > 0) {
+                        const firstTo = toList[0];
+                        const toName = typeof firstTo === 'string' ? firstTo : (firstTo.name || firstTo.email);
+                        return `Draft to: ${toName}${toList.length > 1 ? ` (+${toList.length - 1} more)` : ''}`;
+                      }
+
+                      if (isMe && !isDraftOrSent) return `You (${emailAddr})`;
+
+                      let name = email.fromName || sender.name;
+
+                      // Cleanup name
+                      if (name) {
+                        name = name.replace(/^["'<>]|["'<>]$/g, '').trim();
+                        if (name.includes('<') && name.includes('>')) {
+                          const match = name.match(/^(.*?)\s*</);
+                          if (match && match[1]) name = match[1].trim();
+                        }
+                        name = name.replace(/^["'<>]|["'<>]$/g, '').trim();
+                      }
+
+                      // Priority 1: Real Name
+                      if (name && name.toLowerCase() !== emailAddr.toLowerCase() && !name.includes('@')) return `${name} (${emailAddr})`;
+
+                      // Priority 2: Smart Brand Fallback
+                      const domain = emailAddr.split('@')[1];
+                      const commonProviders = ['gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'icloud.com', 'aol.com', 'protonmail.com'];
+                      if (domain && !commonProviders.includes(domain.toLowerCase())) {
+                        const parts = domain.split('.');
+                        let brand = parts[parts.length - 2];
+                        if (['com', 'edu', 'org', 'net', 'io', 'ai'].includes(brand)) {
+                          brand = parts[parts.length - 3] || brand;
+                        }
+                        if (brand) {
+                          const prettyBrand = brand.charAt(0).toUpperCase() + brand.slice(1).toLowerCase();
+                          return `${prettyBrand} (${emailAddr})`;
+                        }
+                      }
+
+                      return emailAddr;
+                    })()}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#5f6368' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ fontWeight: 600, color: '#5f6368', fontSize: '12px' }}>To:</div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {(() => {
+
+                          return (
+                            <>
+                              {toList && toList.length > 0 ? (
+                                toList.map((r: any, idx: number) => (
+                                  <Tag key={r.email || r.name || idx} style={{ margin: 0 }}>
+                                    {formatRecipientDisplay(r, email.accountEmail)}
+                                  </Tag>
+                                ))
+                              ) : (
+                                <span>me</span>
+                              )}
+
+                              {ccList && ccList.length > 0 && (
+                                <Popover
+                                  content={
+                                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: 420 }}>
+                                      {ccList.map((r: any, idx: number) => (
+                                        <Tag key={r.email || r.name || idx} style={{ margin: 0 }}>
+                                          {formatRecipientDisplay(r, email.accountEmail)}
+                                        </Tag>
+                                      ))}
+                                    </div>
+                                  }
+                                  title={`Cc (${ccList.length})`}
+                                  trigger="click"
+                                >
+                                  <Tag color="default" style={{ cursor: 'pointer', marginLeft: 8 }}>Cc: {ccList.length}</Tag>
+                                </Popover>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div style={{ fontSize: '12px', color: '#5f6368' }}>
+                Sent: {displayDate ? parseAsLocalDate(displayDate).toLocaleString(undefined, {
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  hour12: false
+                }) : ''}
+              </div>
+            </div>
+          </div>
+
+          <Space wrap size={6} className="email-detail-actions" style={{ marginTop: '6px', position: 'relative', zIndex: 2000, pointerEvents: 'auto' }}>
+            <Button size="small" type="primary" onClick={() => { console.log('[EmailDetail] Reply clicked', email?.id); onReply && onReply(email); }}>
+              Reply
+            </Button>
+            <Button size="small" onClick={() => { console.log('[EmailDetail] ReplyAll clicked', email?.id); onReplyAll && onReplyAll(email); }}>
+              Reply All
+            </Button>
+            <Button size="small" onClick={() => onForward && onForward(email)}>
+              Forward
+            </Button>
+            <Button
+              size="small"
+              icon={email.isStarred ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined />}
+              onClick={(e) => onStar(e, email)}
+            >
+              {email.isStarred ? 'Unstar' : 'Star'}
+            </Button>
+
+            <Popover
+              content={
+                <SnoozePopover
+                  onConfirm={(until) => onSnooze && onSnooze(email.id, until)}
+                />
+              }
+              trigger="click"
+              placement="bottomRight"
+            >
+              <Button size="small" icon={<ClockCircleOutlined />}>
+                Snooze
+              </Button>
+            </Popover>
+
+            {canDelete && (
+              <Popconfirm
+                title="Delete email permanently?"
+                description="This action cannot be undone and will remove the message from your provider."
+                onConfirm={() => onDelete({ stopPropagation: () => { } } as any, email)}
+                okText="Delete"
+                cancelText="Cancel"
+                okButtonProps={{ danger: true }}
+                disabled={email.mailboxId !== 'TRASH'}
+              >
                 <Button
-                    icon={<ArrowLeftOutlined />}
-                    onClick={onBack}
-                    style={{ margin: '8px 16px' }}
-                    className="mobile-back-button"
+                  size="small"
+                  icon={<DeleteOutlined />}
+                  danger
+                  onClick={(e) => {
+                    if (email.mailboxId !== 'TRASH') onDelete(e, email);
+                  }}
                 >
-                    Back
+                  {email.mailboxId === 'TRASH' ? 'Delete Permanently' : 'Delete'}
                 </Button>
+              </Popconfirm>
             )}
 
-            <div style={{ width: '100%', margin: 0, padding: showMobileDetail ? '0 12px 12px' : '0 12px' }}>
-                <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-                    {inlineAlertMessage && (
-                        <div style={{ width: '100%' }}>
-                            <Alert
-                                message={inlineAlertMessage}
-                                type="warning"
-                                showIcon
-                                closable
-                                onClose={() => onInlineAlertClose && onInlineAlertClose()}
-                                style={{ marginBottom: 6 }}
-                            />
-                        </div>
-                    )}
-                    <div style={{ marginBottom: '8px' }}>
-                        <Title level={3} style={{ marginTop: '12px', marginBottom: '8px' }}>{email.subject}</Title>
-                    </div>
+            {canRestore && (
+              <Button
+                size="small"
+                icon={<ReloadOutlined />}
+                onClick={() => onRestore && onRestore(email)}
+                loading={isRestoring}
+                disabled={isRestoring}
+              >
+                {email.previousStatus?.toUpperCase() === 'DRAFTS' || email.previousStatus?.toUpperCase() === 'DRAFT' ? 'Restore to Drafts' :
+                  email.previousStatus?.toUpperCase() === 'SENT' ? 'Restore to Sent' :
+                    (email.previousStatus?.toUpperCase() === 'INBOX' || !email.previousStatus) ? 'Restore to Inbox' : 'Restore'}
+              </Button>
+            )}
+            <Button
+              size="small"
+              icon={<ExportOutlined />}
+              onClick={handleOpenInGmail}
+              title="Open in Gmail"
+            >
+              Open in Gmail
+            </Button>
+            <Button
+              size="small"
+              icon={<RobotOutlined />}
+              onClick={handleSummarizeClick}
+              loading={loadingSummary}
+              disabled={showSummary && email.summarySource === 'GEMINI'}
+              title={showSummary && email.summarySource === 'GEMINI' ? "Already summarized by Gemini" : "Generate AI Summary"}
+            >
+              AI Summary
+            </Button>
+            {isLocal && (
+              <Button size="small" onClick={inspectHtml} danger={false}>
+                Inspect HTML
+              </Button>
+            )}
+          </Space>
 
-                    {/* V28.4: Metadata move up (Below Title, Above Buttons) */}
-                    <div style={{ width: '100%' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <Avatar
-                                    icon={<UserOutlined />}
-                                    style={{ backgroundColor: '#1a73e8' }}
-                                    size={40}
-                                />
-                                <div>
-                                    <div style={{ fontWeight: 600, color: '#202124', fontSize: '14px' }}>
-                                        {(() => {
-                                          // V42: Super-Robust Sender Name Extraction
-                                          const isMe = email.isFromMe || (email.accountEmail && sender.email.toLowerCase() === email.accountEmail.toLowerCase());
-                                          const emailAddr = (sender.email || '').replace(/^["'<>]|["'<>]$/g, '').trim();
-                                          
-                                          if (isMe) return `You (${emailAddr})`;
-                                          
-                                          let name = email.fromName || sender.name;
-                                          
-                                          // Cleanup name
-                                          if (name) {
-                                            name = name.replace(/^["'<>]|["'<>]$/g, '').trim();
-                                            if (name.includes('<') && name.includes('>')) {
-                                              const match = name.match(/^(.*?)\s*</);
-                                              if (match && match[1]) name = match[1].trim();
-                                            }
-                                            name = name.replace(/^["'<>]|["'<>]$/g, '').trim();
-                                          }
-                                          
-                                          // Priority 1: Real Name
-                                          if (name && name.toLowerCase() !== emailAddr.toLowerCase() && !name.includes('@')) return `${name} (${emailAddr})`;
-                                          
-                                          // Priority 2: Smart Brand Fallback
-                                          const domain = emailAddr.split('@')[1];
-                                          const commonProviders = ['gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'icloud.com', 'aol.com', 'protonmail.com'];
-                                          if (domain && !commonProviders.includes(domain.toLowerCase())) {
-                                            const parts = domain.split('.');
-                                            let brand = parts[parts.length - 2];
-                                            if (['com', 'edu', 'org', 'net', 'io', 'ai'].includes(brand)) {
-                                              brand = parts[parts.length - 3] || brand;
-                                            }
-                                            if (brand) {
-                                              const prettyBrand = brand.charAt(0).toUpperCase() + brand.slice(1).toLowerCase();
-                                              return `${prettyBrand} (${emailAddr})`;
-                                            }
-                                          }
-                                          
-                                          return emailAddr;
-                                        })()}
-                                    </div>
-                                    <div style={{ fontSize: '12px', color: '#5f6368' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                            <div style={{ fontWeight: 600, color: '#5f6368', fontSize: '12px' }}>To:</div>
-                                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                                {(() => {
-
-                                                    return (
-                                                        <>
-                                                            {toList && toList.length > 0 ? (
-                                                                toList.map((r: any, idx: number) => (
-                                                                    <Tag key={r.email || r.name || idx} style={{ margin: 0 }}>
-                                                                        {formatRecipientDisplay(r, email.accountEmail)}
-                                                                    </Tag>
-                                                                ))
-                                                            ) : (
-                                                                <span>me</span>
-                                                            )}
-
-                                                            {ccList && ccList.length > 0 && (
-                                                                <Popover
-                                                                    content={
-                                                                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxWidth: 420 }}>
-                                                                            {ccList.map((r: any, idx: number) => (
-                                                                                <Tag key={r.email || r.name || idx} style={{ margin: 0 }}>
-                                                                                    {formatRecipientDisplay(r, email.accountEmail)}
-                                                                                </Tag>
-                                                                            ))}
-                                                                        </div>
-                                                                    }
-                                                                    title={`Cc (${ccList.length})`}
-                                                                    trigger="click"
-                                                                >
-                                                                    <Tag color="default" style={{ cursor: 'pointer', marginLeft: 8 }}>Cc: {ccList.length}</Tag>
-                                                                </Popover>
-                                                            )}
-                                                        </>
-                                                    );
-                                                })()}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div style={{ fontSize: '12px', color: '#5f6368' }}>
-                                Sent: {displayDate ? parseAsLocalDate(displayDate).toLocaleString(undefined, {
-                                    day: 'numeric',
-                                    month: 'short',
-                                    year: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                    hour12: false
-                                }) : ''}
-                            </div>
-                        </div>
-                    </div>
-
-                    <Space wrap size={6} className="email-detail-actions" style={{ marginTop: '6px', position: 'relative', zIndex: 2000, pointerEvents: 'auto' }}>
-                        <Button size="small" type="primary" onClick={() => { console.log('[EmailDetail] Reply clicked', email?.id); onReply && onReply(email); }}>
-                            Reply
-                        </Button>
-                        <Button size="small" onClick={() => { console.log('[EmailDetail] ReplyAll clicked', email?.id); onReplyAll && onReplyAll(email); }}>
-                            Reply All
-                        </Button>
-                        <Button size="small" onClick={() => onForward && onForward(email)}>
-                            Forward
-                        </Button>
-                        <Button
-                            size="small"
-                            icon={email.isStarred ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined />}
-                            onClick={(e) => onStar(e, email)}
-                        >
-                            {email.isStarred ? 'Unstar' : 'Star'}
-                        </Button>
-
-                        <Popover
-                            content={
-                                <SnoozePopover
-                                    onConfirm={(until) => onSnooze && onSnooze(email.id, until)}
-                                />
-                            }
-                            trigger="click"
-                            placement="bottomRight"
-                        >
-                            <Button size="small" icon={<ClockCircleOutlined />}>
-                                Snooze
-                            </Button>
-                        </Popover>
-
-                        {canDelete && (
-                            <Button size="small" icon={<DeleteOutlined />} danger onClick={(e) => onDelete(e, email)}>
-                                Delete
-                            </Button>
-                        )}
-
-                        {canRestore && (
-                            <Button size="small" icon={<InboxOutlined />} onClick={() => onRestore && onRestore(email)}>
-                                Move to Inbox
-                            </Button>
-                        )}
-                        <Button
-                            size="small"
-                            icon={<ExportOutlined />}
-                            onClick={handleOpenInGmail}
-                            title="Open in Gmail"
-                        >
-                            Open in Gmail
-                        </Button>
-                        <Button
-                            size="small"
-                            icon={<RobotOutlined />}
-                            onClick={handleSummarizeClick}
-                            loading={loadingSummary}
-                            disabled={showSummary && email.summarySource === 'GEMINI'}
-                            title={showSummary && email.summarySource === 'GEMINI' ? "Already summarized by Gemini" : "Generate AI Summary"}
-                        >
-                            AI Summary
-                        </Button>
-                        {isLocal && (
-                            <Button size="small" onClick={inspectHtml} danger={false}>
-                                Inspect HTML
-                            </Button>
-                        )}
-                    </Space>
-
-                    {((email.summary || loadingSummary) && showSummary) && (
-                        <Card
-                            size="small"
-                            title={<Space><RobotOutlined /> <Text strong>AI Summary</Text></Space>}
-                            extra={<Button type="text" size="small" onClick={() => toggleSummary(false)}>×</Button>}
-                            style={{
-                                borderLeft: email.summarySource === 'GEMINI' ? '4px solid #48bb78' : '4px solid #667eea',
-                                background: '#fcfdff'
-                            }}
-                        >
-                            {loadingSummary ? (
-                                <div style={{ textAlign: 'center', padding: '10px' }}>
-                                    <Spin size="small" tip="Generative AI at work..." />
-                                </div>
-                            ) : (
-                                <Text style={{ fontStyle: 'italic', color: '#4a5568' }}>
-                                    {email.summary}
-                                </Text>
-                            )}
-                        </Card>
-                    )}
+          {((email.summary || loadingSummary) && showSummary) && (
+            <Card
+              size="small"
+              title={<Space><RobotOutlined /> <Text strong>AI Summary</Text></Space>}
+              extra={<Button type="text" size="small" onClick={() => toggleSummary(false)}>×</Button>}
+              style={{
+                borderLeft: email.summarySource === 'GEMINI' ? '4px solid #48bb78' : '4px solid #667eea',
+                background: '#fcfdff'
+              }}
+            >
+              {loadingSummary ? (
+                <div style={{ textAlign: 'center', padding: '10px' }}>
+                  <Spin size="small" tip="Generative AI at work..." />
+                </div>
+              ) : (
+                <Text style={{ fontStyle: 'italic', color: '#4a5568' }}>
+                  {email.summary}
+                </Text>
+              )}
+            </Card>
+          )}
 
           <div style={{
             padding: '0 8px 16px', // Outer container breathing room

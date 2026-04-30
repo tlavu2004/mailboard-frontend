@@ -184,6 +184,66 @@
   transform: translateY(-1px);
 }
 
+/* Action Icons Consistency */
+.mail-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mail-action-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #94a3b8;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mail-item-card:hover .mail-action-icon {
+  opacity: 0.6;
+}
+
+.mail-action-icon:hover {
+  opacity: 1 !important;
+  transform: scale(1.1);
+  background-color: #f1f5f9;
+}
+
+/* Restore Button Styling */
+.restore-btn:hover {
+  color: #3b82f6 !important;
+  background-color: rgba(59, 130, 246, 0.1) !important;
+}
+
+/* Star Button Styling */
+.star-btn:hover {
+  color: #f59e0b !important;
+  background-color: rgba(245, 158, 11, 0.1) !important;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.3);
+}
+
+.star-btn.is-starred {
+  opacity: 1 !important;
+  color: #f59e0b !important;
+}
+
+/* Delete Button Styling */
+.delete-btn:hover {
+  color: #ef4444 !important;
+  background-color: rgba(239, 68, 68, 0.1) !important;
+}
+
+.mail-item-date {
+  min-width: 45px;
+  text-align: right;
+  margin-left: 8px;
+}
+
 /* Email selection state - Premium look */
 .email-card-selected {
   border-left: 4px solid #4f46e5 !important;
@@ -364,4 +424,93 @@
 
 .email-detail-actions .ant-btn {
   pointer-events: auto !important;
+}
+
+/* Stabilizing Overlay (Glassmorphism) */
+.stabilizing-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeInOverlay 0.3s ease-out;
+}
+
+.stabilizing-content {
+  background: rgba(255, 255, 255, 0.9);
+  padding: 32px 48px;
+  border-radius: 24px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+}
+
+.stabilizing-text {
+  text-align: center;
+}
+
+@keyframes fadeInOverlay {
+  from { opacity: 0; backdrop-filter: blur(0); }
+  to { opacity: 1; backdrop-filter: blur(20px); }
+}
+
+/* Glassmorphism Confirmation Modal */
+.glass-confirm-modal .ant-modal-content {
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15) !important;
+}
+
+.glass-modal-mask {
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  background: rgba(0, 0, 0, 0.4) !important;
+}
+
+.glass-confirm-modal .ant-modal-confirm-title {
+  font-weight: 700 !important;
+  color: #1a1a1a !important;
+  font-size: 1.25rem !important;
+  margin-bottom: 12px !important;
+}
+
+.glass-confirm-modal .ant-modal-confirm-content {
+  color: #4a4a4a !important;
+  font-size: 1rem !important;
+  line-height: 1.6 !important;
+}
+
+.glass-confirm-modal .ant-modal-confirm-btns {
+  margin-top: 32px !important;
+}
+
+.glass-confirm-modal .ant-btn {
+  height: 40px !important;
+  padding: 0 24px !important;
+  border-radius: 12px !important;
+  font-weight: 600 !important;
+  transition: all 0.2s ease !important;
+}
+
+.glass-confirm-modal .ant-btn-primary.ant-btn-dangerous {
+  background: #ff4d4f !important;
+  border: none !important;
+  box-shadow: 0 4px 12px rgba(255, 77, 79, 0.3) !important;
+}
+
+.glass-confirm-modal .ant-btn-default {
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  background: rgba(255, 255, 255, 0.5) !important;
 }

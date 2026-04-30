@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { flushSync } from 'react-dom';
-import { Layout, Menu, List, Card, Button, Typography, Space, Avatar, Spin, message, Empty, Modal, Pagination, Dropdown, Drawer, notification, Alert } from 'antd';
+import { Layout, Menu, List, Card, Button, Typography, Space, Avatar, Spin, message, Empty, Modal, Pagination, Dropdown, Drawer, notification, Alert, Tooltip } from 'antd';
 import EmailDetail from '@/app/components/EmailDetail';
 import InlineAlertContext from '@/contexts/InlineAlertContext';
 import ComposeModal from '@/components/ComposeModal';
@@ -72,14 +72,26 @@ const MAILBOX_META: Record<string, { name: string; order: number; icon: React.Re
   TRASH: { name: 'Trash', order: 90, icon: <DeleteOutlined /> },
 };
 
-const parseAsLocalDate = (value?: string): Date => {
-  if (!value) return new Date();
-  const trimmed = value.trim();
-  const hasTimezone = /([zZ]|[+\-]\d{2}:?\d{2})$/.test(trimmed);
-  const normalized = hasTimezone ? trimmed : `${trimmed}Z`;
-  const parsed = new Date(normalized);
-  return Number.isNaN(parsed.getTime()) ? new Date(trimmed) : parsed;
-};
+const parseAsLocalDate = (dateStr: string) => {
+    if (!dateStr) return new Date();
+    try {
+      // V47: Robust date parsing. If backend sends ISO but lacks 'Z', it might be local time already.
+      // But usually Spring Data JPA sends UTC. Let's ensure we treat it correctly.
+      let normalized = dateStr;
+      if (normalized.includes(' ')) normalized = normalized.replace(' ', 'T');
+      
+      // V43: Force UTC if no timezone offset is present to fix the 7-hour shift
+      if (!normalized.includes('Z') && !normalized.includes('+') && !normalized.includes('-')) {
+          normalized += 'Z';
+      }
+      
+      const date = new Date(normalized);
+      if (isNaN(date.getTime())) return new Date();
+      return date;
+    } catch (e) {
+      return new Date();
+    }
+  };
 
 export default function InboxPage() {
   return (
@@ -128,6 +140,7 @@ function InboxPageContent() {
   const [composeMode, setComposeMode] = useState<'compose' | 'reply' | 'reply-all' | 'forward'>('compose');
   const [replyToEmail, setReplyToEmail] = useState<Email | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
+  const loadCountRef = useRef(0);
   const [accountId, setAccountId] = useState<number | null>(null);
   const [kanbanSettingsOpen, setKanbanSettingsOpen] = useState(false);
   const [editingColumnId, setEditingColumnId] = useState<string | undefined>(undefined);
@@ -177,7 +190,7 @@ function InboxPageContent() {
         const msg = JSON.parse(event.data);
         console.log('[WS] Received message:', msg);
         if (handleNotificationRef.current) handleNotificationRef.current(msg);
-      } catch (err) {
+      } catch (err: any) {
         console.error('[WS] Error parsing message:', err);
       }
     };
@@ -186,7 +199,7 @@ function InboxPageContent() {
       console.log('[WS] Connection closed:', e.code, e.reason);
     };
 
-    socket.onerror = (err) => {
+    socket.onerror = (err: any) => {
       console.error('[WS] Socket error:', err);
     };
 
@@ -225,6 +238,9 @@ function InboxPageContent() {
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Email[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isRestoring, setIsRestoring] = useState<string | null>(null); // Stores emailId being restored
+  const [isStabilizing, setIsStabilizing] = useState<string | null>(null); // V43: Message for protection overlay
   const [isSearching, setIsSearching] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [nextPageToken, setNextPageToken] = useState<string>('');
@@ -234,13 +250,31 @@ function InboxPageContent() {
   const [searchMode, setSearchMode] = useState<'semantic' | 'text'>('semantic');
   const [syncLoading, setSyncLoading] = useState(false);
 
+  // Custom Confirmation Modal State
+  const [confirmModal, setConfirmModal] = useState<{
+    visible: boolean;
+    title: string;
+    content: string;
+    onConfirm: () => void;
+    okText: string;
+    danger: boolean;
+  }>({
+    visible: false,
+    title: '',
+    content: '',
+    onConfirm: () => {},
+    okText: 'Confirm',
+    danger: false
+  });
+
+
   // Filter & Sort state
   const [filters, setFilters] = useState<FilterState>(() => {
     if (typeof window === 'undefined') return { unread: false, hasAttachment: false };
     try {
       const saved = localStorage.getItem('mb:filters');
       return saved ? JSON.parse(saved) : { unread: false, hasAttachment: false };
-    } catch (e) {
+    } catch (e: any) {
       return { unread: false, hasAttachment: false };
     }
   });
@@ -254,7 +288,7 @@ function InboxPageContent() {
     try {
       localStorage.setItem('mb:filters', JSON.stringify(filters));
       localStorage.setItem('mb:sortLayers', JSON.stringify(sortLayers));
-    } catch (e) {}
+    } catch (e: any) {}
   }, [filters, sortLayers]);
   const [activeIndex, setActiveIndex] = useState<number>(-1);
   const [isKeyboardHelpVisible, setIsKeyboardHelpVisible] = useState(false);
@@ -389,6 +423,20 @@ function InboxPageContent() {
         setTotalEmails(prev => prev + 1);
       }
     }
+    // Optimistic update for mailbox counts
+    setMailboxes(prev => prev.map(m => {
+      // If we were editing a draft and sent it
+      const wasDraft = replyToEmail && (replyToEmail.mailboxId?.toUpperCase() === 'DRAFTS' || replyToEmail.mailboxId?.toUpperCase() === 'DRAFT');
+      
+      if (m.id === 'SENT') {
+        // We usually don't show SENT count, but if we do, increment it
+        return { ...m, unreadCount: m.unreadCount + 1 };
+      }
+      if (m.id === 'DRAFTS' && wasDraft) {
+        return { ...m, unreadCount: Math.max(0, m.unreadCount - 1) };
+      }
+      return m;
+    }));
 
     // 2. If we just sent an email and we are in DRAFTS, we must remove the draft and refresh
     if (normalizedMailbox === 'DRAFTS' || normalizedMailbox === 'DRAFT') {
@@ -398,19 +446,11 @@ function InboxPageContent() {
          const isSameDraftId = sentPreview.gmailDraftId && e.gmailDraftId === sentPreview.gmailDraftId;
          return !isSameId && !isSameDraftId;
        }));
-       
-       // Force a refresh from server to be 100% sure
-       setTimeout(() => loadEmails(1, true), 500);
+       setTotalEmails(prev => Math.max(0, prev - 1));
     }
-    
-    // 3. If we are in SENT, refresh to see the new mail
-    if (normalizedMailbox === 'SENT') {
-        loadEmails(1, true);
-     }
 
-     // 4. Always refresh mailbox counts to reflect decremented Drafts and incremented Sent
-     loadMailboxes();
-   };
+    loadMailboxes();
+  };
 
   const handleDraftUpdate = (draft: Email) => {
     const normalizedMailbox = selectedMailbox?.toUpperCase();
@@ -434,6 +474,12 @@ function InboxPageContent() {
     
     // Update total count if it's a new draft
     if (wasNew) {
+        setMailboxes(prev => prev.map(m => {
+          if (m.id === 'DRAFTS') {
+            return { ...m, unreadCount: m.unreadCount + 1 };
+          }
+          return m;
+        }));
         loadMailboxes(); // Refresh accurate counts from server
     }
   };
@@ -552,10 +598,20 @@ function InboxPageContent() {
       console.log('[InboxPage] loadMailboxes: starting...');
       const data = await emailService.getMailboxes();
       console.log('[InboxPage] loadMailboxes: got', data.mailboxes?.length, 'mailboxes, accountId:', data.accountId);
+      
       setMailboxes(data.mailboxes || []);
+      
       if (data.accountId) {
-        setAccountId(data.accountId);
+        const newAccountId = Number(data.accountId);
+        setAccountId(prev => {
+          if (prev !== newAccountId) {
+            console.log(`[InboxPage] accountId changing from ${prev} to ${newAccountId}`);
+            return newAccountId;
+          }
+          return prev;
+        });
       }
+      
       if (data.mailboxes && data.mailboxes.length > 0) {
         const inbox = data.mailboxes.find(m => m.id === 'INBOX');
         const targetMailbox = inbox ? 'INBOX' : data.mailboxes[0].id;
@@ -563,7 +619,7 @@ function InboxPageContent() {
         return targetMailbox;
       }
       return null;
-    } catch (error) {
+    } catch (error: any) {
       console.error('[InboxPage] loadMailboxes: FAILED', error);
       message.error('Failed to load mailboxes');
       return null;
@@ -572,16 +628,22 @@ function InboxPageContent() {
 
   const loadEmails = useCallback(async (p: number, silent: boolean = false) => {
     if (!selectedMailbox) return;
+    const requestId = ++loadCountRef.current;
     if (!silent) setEmailsLoading(true);
     try {
       const data = await emailService.getEmailsByMailbox(selectedMailbox, p, pageSize, filters, sortLayers);
-      setEmails(data.emails);
-      setTotalEmails(data.total);
-      setCurrentPage(p);
-    } catch (err) {
+      // V48: Only update if this is still the most recent request
+      if (requestId === loadCountRef.current) {
+        setEmails(data.emails);
+        setTotalEmails(data.total);
+        setCurrentPage(p);
+      }
+    } catch (err: any) {
       console.error('Failed to load emails:', err);
     } finally {
-      if (!silent) setEmailsLoading(false);
+      if (!silent && requestId === loadCountRef.current) {
+        setEmailsLoading(false);
+      }
     }
   }, [selectedMailbox, pageSize, filters, sortLayers]);
 
@@ -654,7 +716,7 @@ function InboxPageContent() {
             console.log(`Auto-generated embeddings for ${result.processed} emails`);
           }
         })
-        .catch(err => {
+        .catch((err: any) => {
           // If it's a network error, it's expected when offline
           if (err.message === 'Network Error' || !navigator.onLine) {
             console.warn('[Embeddings] Network unavailable, skipping this attempt.');
@@ -680,6 +742,11 @@ function InboxPageContent() {
   };
 
   const handleMailboxSelect = (mailboxId: string) => {
+    // V43: Clear list immediately to prevent "ghost" mails from previous mailbox
+    setEmails([]);
+    setTotalEmails(0);
+    setSelectedEmail(null);
+    
     setSelectedMailbox(mailboxId);
     setCurrentPage(1); // Reset to page 1 when switching mailbox
     setShowMobileDetail(false);
@@ -689,9 +756,8 @@ function InboxPageContent() {
     params.set('mailbox', mailboxId);
     router.push(`${pathname}?${params.toString()}`);
 
-    // V10.50: Automatically trigger sync for system folders when selected
-    const systemFolders = ['INBOX', 'TRASH', 'SPAM', 'SENT', 'DRAFTS', 'DRAFT'];
-    if (systemFolders.includes(mailboxId.toUpperCase())) {
+    // V10.50: Automatically trigger sync ONLY for INBOX when selected to avoid heavy background tasks for Drafts/Sent
+    if (mailboxId.toUpperCase() === 'INBOX') {
       handleSync(mailboxId);
     }
   };
@@ -744,6 +810,14 @@ function InboxPageContent() {
     if (!email.isRead) {
       // Optimistic update
       setEmails(prev => prev.map(e => e.id === email.id ? { ...e, isRead: true } : e));
+
+      // Optimistic update for mailbox unread count
+      setMailboxes(prev => prev.map(m => {
+        if (m.id === (selectedMailbox || 'INBOX')) {
+          return { ...m, unreadCount: Math.max(0, m.unreadCount - 1) };
+        }
+        return m;
+      }));
 
       // Mark as read in backend
       emailService.markAsRead(email.id).catch(err => {
@@ -851,6 +925,10 @@ function InboxPageContent() {
   // Handlers
   // real-time notifications
   const handleNotification = useCallback((msg: any) => {
+    if (isRestoring) {
+      console.log('[InboxPage] Ignoring WebSocket notification during active restoration');
+      return;
+    }
     console.log('[InboxPage] WebSocket notification received:', msg);
     
     if (msg?.type === 'NEW_EMAILS' || msg?.type === 'UPDATED_EMAILS') {
@@ -858,85 +936,81 @@ function InboxPageContent() {
       if (emailIds.length === 0) return;
 
       const isInbox = (selectedMailbox || 'INBOX').toUpperCase() === 'INBOX';
-      
       (async () => {
         try {
+          let anyChanges = false;
           let newEmailsForTotal = 0;
+          
           for (const id of emailIds) {
             try {
-              const fullEmails = await Promise.all([emailService.getEmailDetail(String(id))]);
-              
-              // 1. Always update mailbox counts
-              loadMailboxes();
+              const fullEmail = await emailService.getEmailDetail(String(id));
+              anyChanges = true;
 
-              // 2. Decide if we should notify and update total
-              const isNewForInbox = 
-                (fullEmails[0].mailboxId || '').toUpperCase() === 'INBOX' && 
-                msg.type === 'NEW_EMAILS';
+              const mailboxId = (fullEmail.mailboxId || '').toUpperCase();
+              const currentMailbox = (selectedMailbox || 'INBOX').toUpperCase();
               
-              if (isNewForInbox) {
+              // Logic check: Does it belong here?
+              const statusMatch = mailboxId === currentMailbox || (currentMailbox === 'DRAFTS' && mailboxId === 'DRAFT');
+              const unreadMatch = !filters.unread || !fullEmail.isRead;
+              const attachMatch = !filters.hasAttachment || fullEmail.hasAttachments;
+              const shouldBeInList = statusMatch && unreadMatch && attachMatch;
+
+              if (mailboxId === 'INBOX' && msg.type === 'NEW_EMAILS') {
                 newEmailsForTotal++;
               }
 
-              // 3. Update the visible list if appropriate
               setEmails(prev => {
-                // Option 2 Logic: Insertion with better matching and debugging
-                const shouldInsert = fullEmails.every(e => {
-                  const statusMatch = (e.mailboxId || '').toUpperCase() === selectedMailbox.toUpperCase();
-                  const unreadMatch = !filters.unread || !e.isRead;
-                  const attachMatch = !filters.hasAttachment || e.hasAttachments;
-                  
-                  console.log(`[Realtime] Checking email ${e.id}: status=${statusMatch}, unread=${unreadMatch}, attach=${attachMatch}`);
-                  return statusMatch && unreadMatch && attachMatch;
-                });
-
-                if (!shouldInsert && msg.type !== 'UPDATED_EMAILS') return prev;
-
-                const full = fullEmails[0];
-                const exists = prev.some(e => String(e.id) === String(full.id));
+                const exists = prev.some(e => String(e.id) === String(fullEmail.id));
                 
-                if (exists) {
-                  return prev.map(e => String(e.id) === String(full.id) ? full : e);
-                }
-                
-                if (isSearching) return prev;
-
-                const next = [full, ...prev.filter(e => String(e.id) !== String(full.id))];
-                next.sort((a, b) => {
-                  for (const layer of sortLayers) {
-                    const { field, order } = layer;
-                    const isAsc = order === 'asc';
-
-                    let res = 0;
-                    if (field === 'date' || field === 'receivedDate') {
-                      res = isAsc ? new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime() : new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime();
-                    } else if (field === 'fromName' || field === 'sender') {
-                      const getName = (e: Email) => {
-                        const isMe = e.isFromMe || (e.accountEmail && e.from?.email?.toLowerCase() === e.accountEmail.toLowerCase());
-                        if (isMe) return 'you'; 
-                        return (e.fromName || e.from?.name || e.from?.email || '').toLowerCase();
-                      };
-                      const sA = getName(a);
-                      const sB = getName(b);
-                      res = isAsc ? sA.localeCompare(sB) : sB.localeCompare(sA);
-                    } else if (field === 'subject') {
-                      res = isAsc ? (a.subject || '').localeCompare(b.subject || '') : (b.subject || '').localeCompare(a.subject || '');
-                    }
-                    
-                    if (res !== 0) return res;
+                if (shouldBeInList) {
+                  if (exists) {
+                    return prev.map(e => String(e.id) === String(fullEmail.id) ? fullEmail : e);
                   }
-                  return 0;
-                });
-
-                if (currentPage === 1 || prev.length < pageSize) {
-                   return next.slice(0, pageSize);
+                  if (isSearching) return prev;
+                  
+                  // Insert and Sort
+                  const next = [fullEmail, ...prev];
+                  return next.sort((a, b) => {
+                    for (const layer of sortLayers) {
+                      const { field, order } = layer;
+                      const isAsc = order === 'asc';
+                      let res = 0;
+                      if (field === 'date' || field === 'receivedDate') {
+                        res = isAsc ? new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime() : new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime();
+                      } else if (field === 'fromName' || field === 'sender') {
+                        const getName = (e: Email) => {
+                          const isMe = e.isFromMe || (e.accountEmail && e.from?.email?.toLowerCase() === e.accountEmail.toLowerCase());
+                          if (isMe) return 'you'; 
+                          return (e.fromName || e.from?.name || e.from?.email || '').toLowerCase();
+                        };
+                        const sA = getName(a);
+                        const sB = getName(b);
+                        res = isAsc ? sA.localeCompare(sB) : sB.localeCompare(sA);
+                      } else if (field === 'subject') {
+                        res = isAsc ? (a.subject || '').localeCompare(b.subject || '') : (b.subject || '').localeCompare(a.subject || '');
+                      }
+                      if (res !== 0) return res;
+                    }
+                    return 0;
+                  }).slice(0, pageSize);
+                } else {
+                  // If it shouldn't be here but exists, REMOVE it (important for moved/deleted emails)
+                  if (exists) {
+                    return prev.filter(e => String(e.id) !== String(fullEmail.id));
+                  }
+                  return prev;
                 }
-                
-                return prev;
               });
             } catch (err) {
               console.warn('[InboxPage] Failed to process email id', id, err);
             }
+          }
+          
+          if (anyChanges) {
+            // V42: Add delay to allow backend transactions to commit before refreshing counts
+            setTimeout(() => {
+                loadMailboxes(); 
+            }, 1000);
           }
           
           if (newEmailsForTotal > 0) {
@@ -950,12 +1024,15 @@ function InboxPageContent() {
           }
         } catch (e) {
           console.warn('[InboxPage] Error in notification loop', e);
-          loadMailboxes();
-          loadEmails(currentPage, true);
+          // V42: Add delay to allow backend transactions to commit
+          setTimeout(() => {
+            loadMailboxes();
+            loadEmails(currentPage, true);
+          }, 1000);
         }
       })();
     }
-  }, [selectedMailbox, loadMailboxes, loadEmails, currentPage, pageSize, filters, isSearching, sortLayers]);
+  }, [selectedMailbox, loadMailboxes, loadEmails, currentPage, pageSize, filters, isSearching, sortLayers, isRestoring]);
 
   useEmailNotifications(accountId, handleNotification);
 
@@ -1051,6 +1128,9 @@ function InboxPageContent() {
 
   const handleStar = async (e: React.MouseEvent, email: Email) => {
     e.stopPropagation();
+    if (isRestoring === email.id) return;
+    setIsRestoring(email.id);
+    setIsStabilizing('Syncing star status with Gmail...');
 
     // Store original state for rollback
     const originalStarred = email.isStarred;
@@ -1066,6 +1146,15 @@ function InboxPageContent() {
       );
     };
     setEmails(updateEmails(emails));
+
+    // Optimistic update for mailbox counts
+    setMailboxes(prev => prev.map(m => {
+      if (m.id.toUpperCase() === 'STARRED') {
+        return { ...m, unreadCount: newStarred ? m.unreadCount + 1 : Math.max(0, m.unreadCount - 1) };
+      }
+      return m;
+    }));
+
     if (selectedEmail?.id === email.id) {
       if (selectedMailbox === 'STARRED' && !newStarred) {
         setSelectedEmail(null);
@@ -1073,12 +1162,29 @@ function InboxPageContent() {
         setSelectedEmail({ ...selectedEmail, isStarred: newStarred });
       }
     }
-    message.success(originalStarred ? 'Unstarred' : 'Starred');
+    
+    const hide = message.loading(newStarred ? 'Starring...' : 'Unstarring...', 0);
 
-    // Then sync with backend (in background)
+    // Then sync with backend
     try {
       await emailService.toggleStar(email.id, newStarred);
-    } catch (error) {
+      hide();
+      message.success(newStarred ? 'Starred' : 'Unstarred');
+      
+      // V45: Guaranteed refresh after delay (Increased to 3s for better sync stability)
+      setTimeout(() => {
+        Promise.all([
+          loadMailboxes(),
+          // Refresh list if in Starred
+          selectedMailbox?.toUpperCase() === 'STARRED' ? loadEmails(currentPage, true) : Promise.resolve()
+        ]).finally(() => {
+          setIsRestoring(null);
+          setIsStabilizing(null);
+        });
+      }, 3000);
+    } catch (error: any) {
+      hide();
+      setIsRestoring(null);
       console.error('Star error:', error);
       message.error('Failed to update star, reverting...');
 
@@ -1089,41 +1195,104 @@ function InboxPageContent() {
       if (selectedEmail?.id === email.id) {
         setSelectedEmail(prev => prev ? { ...prev, isStarred: originalStarred } : null);
       }
+      loadMailboxes();
     }
   };
 
   const handleDelete = async (e: React.MouseEvent, email: Email) => {
     e.stopPropagation();
-
-    // Store original emails for rollback
-    const originalEmails = [...emails];
+    if (isRestoring === email.id) return;
+    
     const emailIndex = emails.findIndex(em => em.id === email.id);
+    const deleteAction = () => {
+        setIsRestoring(email.id);
+        const originalEmails = [...emails];
+        
+        // Optimistic update FIRST (instant UI feedback)
+        setEmails(prev => prev.filter(e => e.id !== email.id));
+        setTotalEmails(prev => Math.max(0, prev - 1));
 
-    // Optimistic update FIRST (instant UI feedback)
-    setEmails(emails.filter(e => e.id !== email.id));
-    if (selectedEmail?.id === email.id) {
-      setSelectedEmail(null);
-      setShowMobileDetail(false);
-    }
-    message.success('Email deleted');
+        if (selectedEmail?.id === email.id) {
+            setSelectedEmail(null);
+            setShowMobileDetail(false);
+        }
 
-    // Then sync with backend (in background)
-    try {
-      await emailService.deleteEmail(email.id);
-    } catch (error) {
-      console.error('Delete error:', error);
-      message.error('Failed to delete email, restoring...');
+        // Optimistic update for mailbox counts
+        setMailboxes(prev => prev.map(m => {
+            const mid = (selectedMailbox || 'INBOX').toUpperCase();
+            
+            // 1. Handle current mailbox decrease
+            if (m.id === mid) {
+                // Inbox uses unreadCount; others (Drafts, Starred, Sent, Spam) use total count in our UI
+                const isTotalCountMailbox = mid !== 'INBOX';
+                const decreaseBy = isTotalCountMailbox ? 1 : (email.isRead ? 0 : 1);
+                return { ...m, unreadCount: Math.max(0, m.unreadCount - decreaseBy) };
+            }
+            
+            // 2. Handle Trash increase
+            if (m.id === 'TRASH') {
+                return { ...m, unreadCount: m.unreadCount + 1 };
+            }
+            
+            // 3. Handle Starred count cross-mailbox
+            if (m.id === 'STARRED' && email.isStarred && mid !== 'STARRED') {
+                return { ...m, unreadCount: Math.max(0, m.unreadCount - 1) };
+            }
+            
+            return m;
+        }));
 
-      // Rollback on failure - restore the email
-      const restoredEmails = [...originalEmails];
-      if (emailIndex >= 0) {
-        restoredEmails.splice(emailIndex, 0, email);
-      }
-      setEmails(originalEmails);
+        message.success('Email deleted');
+
+        const deletePromise = selectedMailbox === 'TRASH' 
+            ? emailService.deleteEmailPermanently(email.id)
+            : emailService.deleteEmail(email.id);
+
+        setIsStabilizing(selectedMailbox === 'TRASH' ? 'Deleting permanently...' : 'Moving to Trash...');
+        
+        deletePromise
+            .then(() => {
+            // V49: Increased delay to 3s and clear stabilizing
+            setTimeout(() => {
+                Promise.all([
+                loadMailboxes(),
+                loadEmails(currentPage, true)
+                ]).finally(() => {
+                setIsRestoring(null);
+                setIsStabilizing(null);
+                });
+            }, 3000);
+            })
+            .catch((err: any) => {
+            console.error('Delete failed:', err);
+            message.error('Failed to delete email');
+            setEmails(originalEmails);
+            setIsRestoring(null);
+            setIsStabilizing(null);
+            });
+    };
+
+    if (selectedMailbox === 'TRASH') {
+      setConfirmModal({
+        visible: true,
+        title: 'Delete Permanently?',
+        content: 'This action cannot be undone. Are you sure you want to permanently delete this email?',
+        okText: 'Delete Permanently',
+        danger: true,
+        onConfirm: () => {
+          setConfirmModal(prev => ({ ...prev, visible: false }));
+          deleteAction();
+        }
+      });
+    } else {
+      deleteAction();
     }
   };
 
   const handleMarkSpam = async (email: Email) => {
+    if (isRestoring === email.id) return;
+    setIsRestoring(email.id);
+
     const originalEmails = [...emails];
     setEmails(prev => prev.filter(e => e.id !== email.id));
     if (selectedEmail?.id === email.id) {
@@ -1131,34 +1300,142 @@ function InboxPageContent() {
       setShowMobileDetail(false);
     }
 
-    try {
-      await emailService.markAsSpam(email.id);
-      message.success('Moved to Spam');
-    } catch (error) {
-      console.error('Spam move error:', error);
-      message.error('Failed to move email to Spam, restoring...');
-      setEmails(originalEmails);
-    }
+    // Optimistic update for mailbox counts
+    setMailboxes(prev => prev.map(m => {
+      const mid = (selectedMailbox || 'INBOX').toUpperCase();
+      if (m.id === mid) {
+        const isTotalCountMailbox = mid !== 'INBOX';
+        const decreaseBy = isTotalCountMailbox ? 1 : (email.isRead ? 0 : 1);
+        return { ...m, unreadCount: Math.max(0, m.unreadCount - decreaseBy) };
+      }
+      if (m.id === 'SPAM') {
+        return { ...m, unreadCount: m.unreadCount + 1 };
+      }
+      if (m.id === 'STARRED' && email.isStarred && mid !== 'STARRED') {
+        return { ...m, unreadCount: Math.max(0, m.unreadCount - 1) };
+      }
+      return m;
+    }));
+
+    emailService.markAsSpam(email.id)
+      .then(() => {
+        // V49: Guaranteed refresh after 2s delay
+        setTimeout(() => {
+          Promise.all([
+            loadMailboxes(),
+            loadEmails(currentPage, true)
+          ]).finally(() => {
+            setIsRestoring(null);
+          });
+        }, 2000);
+      })
+      .catch((error) => {
+        setIsRestoring(null);
+        console.error('Spam move error:', error);
+        message.error('Failed to move to Spam');
+        loadEmails(currentPage, true);
+      });
   };
 
   const handleRestoreToInbox = async (email: Email) => {
+    if (isRestoring) return;
+    setIsRestoring(email.id);
+
     const fromMailbox = (email.mailboxId || '').toUpperCase() === 'TRASH' ? 'TRASH' : 'SPAM';
     const originalEmails = [...emails];
+    
+    // Remove from list immediately
     setEmails(prev => prev.filter(e => e.id !== email.id));
+    
     if (selectedEmail?.id === email.id) {
       setSelectedEmail(null);
       setShowMobileDetail(false);
     }
+    // V45: Optimistic update for mailbox counts - intelligently restore to the correct destination
+    setMailboxes(prev => prev.map(m => {
+      if (m.id === fromMailbox) {
+        return { ...m, unreadCount: Math.max(0, m.unreadCount - 1) };
+      }
+      
+      const destination = (email.previousStatus || 'INBOX').toUpperCase();
+      // Backend handles logic to return to SENT or DRAFTS if that was previous status
+      const targetId = destination === 'DRAFT' ? 'DRAFTS' : destination;
+      
+      if (m.id === targetId) {
+        return { ...m, unreadCount: m.unreadCount + (email.isRead ? 0 : 1) };
+      }
+      
+      if (m.id === 'STARRED' && email.isStarred) {
+        return { ...m, unreadCount: m.unreadCount + 1 };
+      }
+      return m;
+    }));
 
-    try {
-      await emailService.restoreToInbox(email.id, fromMailbox as 'TRASH' | 'SPAM');
-      message.success('Moved back to Inbox');
-    } catch (error) {
-      console.error('Restore error:', error);
-      message.error('Failed to restore email, restoring local state...');
-      setEmails(originalEmails);
-    }
+    setIsRestoring(email.id);
+    setIsStabilizing(`Restoring to ${fromMailbox === 'SPAM' ? 'Inbox' : 'original folder'}...`);
+    
+    emailService.restoreToInbox(email.id, fromMailbox as 'TRASH' | 'SPAM')
+      .then(() => {
+        message.success('Email restored successfully');
+        
+        // V43: 3s delay to ensure Gmail sync settles before allowing interaction
+        setTimeout(() => {
+          // Promise.all to ensure both finish before clearing restoring state
+          Promise.all([
+            loadMailboxes(),
+            loadEmails(currentPage, true)
+          ]).finally(() => {
+            setIsRestoring(null);
+            setIsStabilizing(null);
+          });
+        }, 3000);
+      })
+      .catch((err: any) => {
+        console.error('Restore failed:', err);
+        message.error('Failed to restore email');
+        setIsRestoring(null);
+        setIsStabilizing(null);
+      });
   };
+
+  const handleEmptyTrash = async () => {
+    setConfirmModal({
+      visible: true,
+      title: 'Empty Trash Folder?',
+      content: 'This will permanently delete all emails in your trash. This action is irreversible.',
+      okText: 'Empty Trash',
+      danger: true,
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, visible: false }));
+        
+        setIsStabilizing('Emptying trash folder...');
+        const hide = message.loading('Emptying trash...', 0);
+        try {
+          await emailService.emptyTrash();
+          hide();
+          message.success('Trash emptied successfully');
+          setEmails([]);
+          setTotalEmails(0);
+          
+          setMailboxes(prev => prev.map(m => 
+            m.id === 'TRASH' ? { ...m, unreadCount: 0 } : m
+          ));
+          
+          setTimeout(() => {
+            setIsStabilizing(null);
+            loadMailboxes();
+            loadEmails(1);
+          }, 3000);
+        } catch (err: any) {
+          hide();
+          console.error('Empty trash failed:', err);
+          message.error('Failed to empty trash');
+          setIsStabilizing(null);
+        }
+      }
+    });
+  };
+
 
   const handleDownloadAttachment = async (emailId: string, attachmentId: string, filename: string) => {
     try {
@@ -1455,11 +1732,13 @@ function InboxPageContent() {
                       icon: mailbox.icon,
                       onClick: () => handleMailboxSelect(mailbox.id),
                       label: (
-                        <div className="flex justify-between items-center w-full">
-                          <span>{mailbox.displayName}</span>
-                          {mailbox.unreadCount > 0 && (
-                            <span className="gmail-mailbox-count">{mailbox.unreadCount}</span>
-                          )}
+                        <div className="flex justify-between items-center w-full group">
+                          <span className="flex-1">{mailbox.displayName}</span>
+                          <div className="flex items-center gap-2">
+                            {mailbox.unreadCount > 0 && (
+                              <span className="gmail-mailbox-count">{mailbox.unreadCount}</span>
+                            )}
+                          </div>
                         </div>
                       ),
                     }))}
@@ -1514,6 +1793,7 @@ function InboxPageContent() {
                   onSync={handleSync}
                   onRefresh={handleRefresh}
                   onReset={handleResetFilters}
+                  onEmptyTrash={(selectedMailbox || '').toUpperCase() === 'TRASH' && (mailboxes.find(m => m.id.toUpperCase() === 'TRASH')?.unreadCount || 0) > 0 ? handleEmptyTrash : undefined}
                   onSettings={viewMode === 'kanban' ? () => setKanbanSettingsOpen(true) : undefined}
                   syncLoading={syncLoading}
                   refreshLoading={emailsLoading}
@@ -1586,14 +1866,31 @@ function InboxPageContent() {
                                                 {!email.isRead && <div className="unread-dot flex-shrink-0" />}
                                                 <Text strong={!email.isRead} className="mail-item-sender truncate">
                                                   {(() => {
-                                                    // V42: Super-Robust Sender Name Extraction
-                                                    const isMe = email.isFromMe || (email.accountEmail && email.from.email.toLowerCase() === email.accountEmail.toLowerCase());
-                                                    if (isMe) return 'You';
+                                                    const currentMailbox = (selectedMailbox || 'INBOX').toUpperCase();
+                                                    const prevStatus = (email.previousStatus || '').toUpperCase();
                                                     
+                                                    // V43: Robust outgoing detection
+                                                    const isMe = email.isFromMe || (email.accountEmail && email.from.email.toLowerCase() === email.accountEmail.toLowerCase());
+                                                    const isOutgoingStyle = currentMailbox === 'DRAFTS' || currentMailbox === 'DRAFT' || currentMailbox === 'SENT' ||
+                                                                           (currentMailbox === 'TRASH' && (prevStatus === 'DRAFTS' || prevStatus === 'DRAFT' || prevStatus === 'SENT' || isMe));
+                                                    
+                                                    if (isOutgoingStyle) {
+                                                        const recipient = email.to && email.to.length > 0 
+                                                            ? (typeof email.to[0] === 'string' ? email.to[0] : (email.to[0].name || email.to[0].email))
+                                                            : '(No recipient)';
+                                                        
+                                                        return (
+                                                            <span className="text-blue-600">
+                                                                <span style={{ fontWeight: 500, marginRight: '4px' }}>To:</span>
+                                                                {recipient}
+                                                                {email.to && email.to.length > 1 ? ` (+${email.to.length - 1})` : ''}
+                                                            </span>
+                                                        );
+                                                    }
+                                                    
+                                                    if (isMe) return 'You';
                                                     let name = email.fromName || email.from.name;
                                                     const emailAddr = email.from.email;
-                                                    
-                                                    // Cleanup name (Remove quotes and extract from "Name <email>")
                                                     if (name) {
                                                       name = name.replace(/^"|"$/g, '').trim();
                                                       if (name.includes('<') && name.includes('>')) {
@@ -1602,11 +1899,7 @@ function InboxPageContent() {
                                                       }
                                                       name = name.replace(/^"|"$/g, '').trim();
                                                     }
-                                                    
-                                                    // Priority 1: Backend Provided Name or Extracted Name
                                                     if (name && name.toLowerCase() !== emailAddr.toLowerCase() && !name.includes('@')) return name;
-                                                    
-                                                    // Priority 2: Smart Brand Fallback
                                                     const domain = emailAddr.split('@')[1];
                                                     const commonProviders = ['gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'icloud.com', 'aol.com', 'protonmail.com'];
                                                     if (domain && !commonProviders.includes(domain.toLowerCase())) {
@@ -1617,8 +1910,6 @@ function InboxPageContent() {
                                                       }
                                                       if (brand) return brand.charAt(0).toUpperCase() + brand.slice(1).toLowerCase();
                                                     }
-                                                    
-                                                    // Priority 3: Username fallback
                                                     return emailAddr.split('@')[0];
                                                   })()}
                                                 </Text>
@@ -1632,19 +1923,59 @@ function InboxPageContent() {
                                                 </div>
                                               </div>
 
-                                              <div className="flex items-center gap-2 flex-shrink-0">
-                                                <div
-                                                  onClick={(e) => handleStar(e, email)}
-                                                  className="cursor-pointer hover:scale-125 transition-transform duration-200"
-                                                >
-                                                  {email.isStarred ? (
-                                                    <StarFilled style={{ color: '#f59e0b', fontSize: '15px' }} />
+                                              <div className="flex items-center gap-2 flex-shrink-0 mail-item-actions">
+                                                {selectedMailbox === 'TRASH' && (
+                                                  <Tooltip title="Restore to Original Folder">
+                                                    <div 
+                                                      className="mail-action-icon restore-btn"
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleRestoreToInbox(email);
+                                                      }}
+                                                    >
+                                                      <ReloadOutlined style={{ fontSize: '14px' }} />
+                                                    </div>
+                                                  </Tooltip>
+                                                )}
+                                                
+                                                <Tooltip title={email.isStarred ? 'Unstar' : 'Star'}>
+                                                  <div
+                                                    onClick={(e) => handleStar(e, email)}
+                                                    className={`mail-action-icon star-btn ${email.isStarred ? 'is-starred' : ''}`}
+                                                  >
+                                                    {email.isStarred ? (
+                                                      <StarFilled style={{ color: '#f59e0b', fontSize: '14px' }} />
+                                                    ) : (
+                                                      <StarOutlined style={{ fontSize: '14px' }} />
+                                                    )}
+                                                  </div>
+                                                </Tooltip>
+
+                                                <Tooltip title={selectedMailbox === 'TRASH' ? 'Delete Permanently' : 'Move to Trash'}>
+                                                  <div
+                                                    onClick={(e) => handleDelete(e, email)}
+                                                    className="mail-action-icon delete-btn"
+                                                  >
+                                                    <DeleteOutlined style={{ fontSize: '14px' }} />
+                                                  </div>
+                                                </Tooltip>
+
+                                                <Text type="secondary" className="mail-item-date" style={{ fontSize: '11px', whiteSpace: 'nowrap', marginLeft: '4px' }}>
+                                                  {(selectedMailbox || '').toUpperCase() === 'TRASH' && email.deletedAt ? (
+                                                    <span style={{ color: '#ef4444', fontWeight: 500 }}>
+                                                      {(() => {
+                                                        const expiry = new Date(new Date(email.deletedAt).getTime() + 30 * 24 * 60 * 60 * 1000);
+                                                        const diff = expiry.getTime() - Date.now();
+                                                        if (diff <= 0) return 'Expired';
+                                                        const d = Math.floor(diff / 86400000);
+                                                        const h = Math.floor((diff % 86400000) / 3600000);
+                                                        const m = Math.floor((diff % 3600000) / 60000);
+                                                        return `${d}d ${h}h ${m}m`;
+                                                      })()}
+                                                    </span>
                                                   ) : (
-                                                    <StarOutlined style={{ color: '#cbd5e1', fontSize: '15px' }} />
+                                                    formatDate(email.receivedAt)
                                                   )}
-                                                </div>
-                                                <Text type="secondary" style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>
-                                                  {formatDate(email.receivedAt)}
                                                 </Text>
                                               </div>
                                             </div>
@@ -1741,7 +2072,8 @@ function InboxPageContent() {
                           loadingSummary={loadingSummary}
                           onDownloadAttachment={handleDownloadAttachment}
                           showMobileDetail={showMobileDetail}
-                          showBackButton={isMobile}
+                          showBackButton={true}
+                          isRestoring={isRestoring === (selectedEmail?.id || '')}
                         />
                       </div>
                     )}
@@ -1803,12 +2135,39 @@ function InboxPageContent() {
             </div>
           </Drawer>
 
-          <ComposeModal
+          {/* Stabilizing Overlay (V43) */}
+        {isStabilizing && (
+          <div className="stabilizing-overlay">
+            <div className="stabilizing-content">
+              <Spin size="large" />
+              <div className="stabilizing-text">
+                <Text strong style={{ fontSize: '16px', color: '#1e293b' }}>{isStabilizing}</Text>
+                <Text type="secondary" style={{ fontSize: '13px', display: 'block', marginTop: '4px' }}>
+                  Syncing changes with Gmail...
+                </Text>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <ComposeModal
             visible={isComposeVisible}
             onCancel={handleComposeClose}
             onSend={handleComposeSend}
             onSaveDraft={handleDraftUpdate}
-            onDiscard={() => loadEmails(1)}
+            onDiscard={() => {
+              // If we were editing an existing draft, decrease the count
+              if (replyToEmail && (replyToEmail.mailboxId?.toUpperCase() === 'DRAFTS' || replyToEmail.mailboxId?.toUpperCase() === 'DRAFT')) {
+                setMailboxes(prev => prev.map(m => {
+                  if (m.id === 'DRAFTS') {
+                    return { ...m, unreadCount: Math.max(0, m.unreadCount - 1) };
+                  }
+                  return m;
+                }));
+              }
+              loadEmails(1);
+              loadMailboxes(); // Refresh counts
+            }}
             mode={composeMode}
             currentUserEmail={replyToEmail?.accountEmail || user?.email}
             originalEmail={replyToEmail ? {
@@ -1847,10 +2206,15 @@ function InboxPageContent() {
                 maxHeight: '85vh',
                 overflowY: 'auto',
                 borderRadius: '12px'
+              },
+              mask: {
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
+                background: 'rgba(0, 0, 0, 0.4)'
               }
             }}
             className="email-detail-modal"
-            destroyOnClose
+            destroyOnHidden
           >
             {selectedEmail && (
               <EmailDetail
@@ -1874,6 +2238,40 @@ function InboxPageContent() {
               />
             )}
           </Modal>
+
+          {/* Custom Glassmorphism Confirmation Modal */}
+          <Modal
+            title={confirmModal.title}
+            open={confirmModal.visible}
+            onOk={confirmModal.onConfirm}
+            onCancel={() => setConfirmModal(prev => ({ ...prev, visible: false }))}
+            okText={confirmModal.okText}
+            okButtonProps={{ danger: confirmModal.danger, className: 'rounded-lg' }}
+            cancelButtonProps={{ className: 'rounded-lg' }}
+            className="glass-confirm-modal"
+            styles={{
+              mask: {
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
+                background: 'rgba(0, 0, 0, 0.4)'
+              },
+              content: {
+                background: 'rgba(255, 255, 255, 0.95)',
+                backdropFilter: 'blur(20px) saturate(180%)',
+                WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+                border: '1px solid rgba(255, 255, 255, 0.5)',
+                borderRadius: '20px',
+                boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)'
+              }
+            }}
+            centered
+            destroyOnHidden
+          >
+            <div className="py-2">
+              <Text>{confirmModal.content}</Text>
+            </div>
+          </Modal>
+
           {/* Mobile Navigation & FAB */}
           {isMobile && !showMobileDetail && (
             <>
