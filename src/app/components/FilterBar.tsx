@@ -63,17 +63,18 @@ const FIELD_LABELS: Record<string, string> = {
 
 function SortableTag({ 
   layer, 
-  isPrimary, 
+  index, 
   onToggleOrder, 
   onRemove, 
   canRemove 
 }: { 
   layer: SortLayer, 
-  isPrimary: boolean, 
+  index: number, 
   onToggleOrder: (field: string) => void, 
   onRemove: (field: string) => void,
   canRemove: boolean
 }) {
+  const isPrimary = index === 0;
   const {
     attributes,
     listeners,
@@ -88,6 +89,13 @@ function SortableTag({
     transition,
     zIndex: isDragging ? 100 : 'auto',
     opacity: isDragging ? 0.5 : 1,
+  };
+
+  const getPriorityLabel = (idx: number) => {
+    if (idx === 0) return "Primary Priority";
+    if (idx === 1) return "Secondary Priority";
+    if (idx === 2) return "Tertiary Priority";
+    return `Priority ${idx + 1}`;
   };
 
   return (
@@ -106,7 +114,7 @@ function SortableTag({
           <HolderOutlined />
         </span>
         
-        <Tooltip title={isPrimary ? "Primary Priority" : "Secondary Priority"}>
+        <Tooltip title={getPriorityLabel(index)}>
           <span 
             className="cursor-pointer hover:underline font-medium select-none"
             onClick={() => onToggleOrder(layer.field)}
@@ -245,7 +253,7 @@ export default function FilterBar({
                 <SortableTag
                   key={layer.field}
                   layer={layer}
-                  isPrimary={idx === 0}
+                  index={idx}
                   onToggleOrder={toggleOrder}
                   onRemove={removeLayer}
                   canRemove={sortLayers.length > 1}
