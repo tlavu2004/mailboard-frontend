@@ -17,6 +17,8 @@ import {
   UserOutlined,
   InboxOutlined,
   WarningOutlined,
+  MailOutlined,
+  MailFilled,
 } from '@ant-design/icons';
 import { Email } from '@/types/email';
 import SnoozePopover from './SnoozePopover';
@@ -66,6 +68,8 @@ interface EmailDetailProps {
   inlineAlertMessage?: string;
   onInlineAlertClose?: () => void;
   isRestoring?: boolean;
+  onMarkAsUnread?: (e: React.MouseEvent, email: Email) => void;
+  onMarkAsRead?: (e: React.MouseEvent, email: Email) => void;
 }
 
 const EmailDetail: React.FC<EmailDetailProps> = ({
@@ -90,6 +94,8 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
   inlineAlertMessage,
   onInlineAlertClose,
   isRestoring = false,
+  onMarkAsUnread,
+  onMarkAsRead,
 }) => {
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
@@ -985,6 +991,26 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                 onClick={(e) => onDelete(e, email)}
               >
                 {email.mailboxId === 'TRASH' ? 'Delete Permanently' : 'Delete'}
+              </Button>
+            )}
+
+            {email.isRead && onMarkAsUnread && (
+              <Button
+                size="small"
+                icon={<MailFilled />}
+                onClick={(e) => onMarkAsUnread(e, email)}
+              >
+                Mark as unread
+              </Button>
+            )}
+
+            {!email.isRead && onMarkAsRead && (
+              <Button
+                size="small"
+                icon={<MailOutlined />}
+                onClick={(e) => onMarkAsRead(e, email)}
+              >
+                Mark as read
               </Button>
             )}
 

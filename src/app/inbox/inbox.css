@@ -238,6 +238,17 @@
   background-color: rgba(239, 68, 68, 0.1) !important;
 }
 
+/* Mark Read/Unread Button Styling */
+.unread-btn:hover {
+  color: #4f46e5 !important;
+  background-color: rgba(79, 70, 229, 0.1) !important;
+}
+
+.read-btn:hover {
+  color: #4f46e5 !important;
+  background-color: rgba(79, 70, 229, 0.1) !important;
+}
+
 .mail-item-date {
   min-width: 45px;
   text-align: right;
