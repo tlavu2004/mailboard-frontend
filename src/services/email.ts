@@ -229,6 +229,15 @@ export const emailService = {
     await emailService.modifyEmail(emailId, [], ['UNREAD']);
   },
 
+  // Mark email as unread
+  markAsUnread: async (emailId: string): Promise<void> => {
+    if (USE_MOCK_API) {
+      return;
+    }
+    // Gmail API: Add UNREAD label
+    await emailService.modifyEmail(emailId, ['UNREAD'], []);
+  },
+
   // Toggle star on email (Updated to use modifyEmail)
   toggleStar: async (emailId: string, isStarred: boolean): Promise<void> => {
     if (USE_MOCK_API) {

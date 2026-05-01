@@ -246,9 +246,24 @@
 
 /* Email selection state - Premium look */
 .email-card-selected {
-  border-left: 4px solid #4f46e5 !important;
   background-color: #f8faff !important;
+  border-color: rgba(79, 70, 229, 0.2) !important;
   box-shadow: 0 4px 12px rgba(79, 70, 229, 0.08) !important;
+  position: relative;
+  overflow: hidden;
+}
+
+.email-card-selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #4f46e5;
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+  z-index: 1;
 }
 
 /* Unread Indicator */
