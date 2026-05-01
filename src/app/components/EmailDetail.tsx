@@ -255,7 +255,7 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
     }
   };
 
-  const buildSrcDoc = (bodyHtml: string | undefined, fromEmail?: string) => {
+  const buildSrcDoc = (bodyHtml: string | undefined, fromEmail?: string, isDarkTheme: boolean = false) => {
     const overrideCss = `
       <style>
         /* Very small, non-invasive overrides to preserve original email layout */
@@ -265,9 +265,9 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
         img,video,iframe,embed,object{max-width:100% !important;height:auto !important}
         pre,code,blockquote{white-space:pre-wrap !important;word-break:break-word !important}
 
-        /* Force light-mode rendering for emails that include dark-mode helpers */
-        body, .body { background-color: #ffffff !important; color: #000000 !important; }
-        [class*="dark-mode-background-color-"], .dark-mode-background-color-000000, body.dark-mode-background-color-000000 { background-color: #ffffff !important; color: #000000 !important; }
+        /* Optional light-mode rendering for emails that include dark-mode helpers */
+        body.mb-force-light, .body.mb-force-light { background-color: #ffffff !important; color: #000000 !important; }
+        .mb-force-light [class*="dark-mode-background-color-"], .mb-force-light .dark-mode-background-color-000000 { background-color: #ffffff !important; color: #000000 !important; }
 
         /* Ensure light-mode images are shown and dark-mode variants hidden */
         .light-mode-image:not([class^="x_"]) { display: block !important; }
@@ -337,9 +337,11 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
           // DOM fixes to counter author dark-mode helpers and to normalize LinkedIn header images.
           function applyRuntimeFixes(){
             try{
-              // Quick baseline resets
-              try{ document.documentElement.style.backgroundColor = '#ffffff'; } catch(e){}
-              try{ if (document.body) { document.body.style.backgroundColor = '#ffffff'; document.body.style.color = '#000000'; } } catch(e){}
+              // Quick baseline resets - only if force-light is active
+              if (document.body.classList.contains('mb-force-light')) {
+                try{ document.documentElement.style.backgroundColor = '#ffffff'; } catch(e){}
+                try{ if (document.body) { document.body.style.backgroundColor = '#ffffff'; document.body.style.color = '#000000'; } } catch(e){}
+              }
 
               // First pass: remove global filters/blend-modes that commonly invert colors
               try{
@@ -438,6 +440,8 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
               }
 
               function ensureReadableText(){
+                // Only run if force-light is active
+                if (!document.body.classList.contains('mb-force-light')) return;
                 try{
                   var nodes = document.querySelectorAll('p,div,span,td,th,h1,h2,h3,a,li,label,strong,em');
                   Array.prototype.forEach.call(nodes, function(n){
@@ -498,9 +502,11 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
       // If this email is from a provider known to ship dark-mode helpers (Vercel, edX),
       // append a focused aggressive override that forces light backgrounds inside the
       // email container. This minimizes collateral effects on other templates.
-      var lcFrom = (fromEmail || '').toLowerCase();
+      const lcFrom = (fromEmail || '').toLowerCase();
+      const forceLight = !isDarkTheme && (lcFrom.indexOf('vercel.com') !== -1 || lcFrom.indexOf('edx.org') !== -1 || lcFrom.indexOf('coursera.org') !== -1 || lcFrom.indexOf('jetbrains.com') !== -1 || lcFrom.indexOf('jetbrains') !== -1);
+      
       var extra = '';
-      if (lcFrom.indexOf('vercel.com') !== -1 || lcFrom.indexOf('edx.org') !== -1 || lcFrom.indexOf('coursera.org') !== -1 || lcFrom.indexOf('jetbrains.com') !== -1 || lcFrom.indexOf('jetbrains') !== -1) {
+      if (forceLight) {
         extra = `
           <style>
             /* Aggressive light-mode override for known problematic templates (scoped) */
@@ -670,7 +676,8 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
       }
 
       // Fallback: return original fragment wrapped with minimal head (no base tag)
-      return `<!doctype html><html><head>${viewportMeta}${overrideCss}${extra}</head><body>${body}</body></html>`;
+      const bodyClass = forceLight ? ' class="mb-force-light"' : '';
+      return `<!doctype html><html><head>${viewportMeta}${overrideCss}${extra}</head><body${bodyClass}>${body}</body></html>`;
     } catch (e) {
       // On any error, return a safe wrapper with minimal head
       return `<!doctype html><html><head>${overrideCss}</head><body>${body}</body></html>`;
@@ -748,6 +755,12 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
     return true;
   });
   const displayDate = email.receivedAt || email.createdAt || (email as any).sentAt;
+
+  const isDarkTheme = email?.body ? (
+    /background(?:-color)?:\s*(?:#000|#111|#1a1a1a|#222|black)/i.test(email.body) ||
+    /bgcolor=["'](?:#000|#111|#1a1a1a|#222|black)["']/i.test(email.body) ||
+    (sender.email || '').toLowerCase().includes('roadmap.sh')
+  ) : false;
 
   // Helper to render recipient strings regardless of DTO format (V10.28)
   const renderRecipientList = (list: any[]) => {
@@ -1076,8 +1089,8 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
           )}
 
           <div style={{
-            padding: '0 8px 16px', // Outer container breathing room
-            backgroundColor: '#f8fafc',
+            padding: isDarkTheme ? '0' : '0 8px 16px', // Seamless for dark emails
+            backgroundColor: isDarkTheme ? '#000000' : '#f8fafc',
             borderRadius: '16px',
             display: 'flex',
             flexDirection: 'column',
@@ -1091,11 +1104,11 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
               style={{
                 borderRadius: '12px',
                 overflow: 'hidden',
-                border: '1px solid #eef2f6',
+                border: isDarkTheme ? 'none' : '1px solid #eef2f6',
                 width: '100%',
                 maxWidth: 'none',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
-                backgroundColor: '#ffffff'
+                boxShadow: isDarkTheme ? 'none' : '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
+                backgroundColor: isDarkTheme ? '#000000' : '#ffffff'
               }}
             >
               {/* Card is now ONLY for body content */}
@@ -1128,10 +1141,10 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
                   )}
                 </div>
               ) : (
-                <div style={{ backgroundColor: '#ffffff' }}>
+                <div style={{ backgroundColor: isDarkTheme ? '#000000' : '#ffffff' }}>
                   <iframe
                     ref={iframeRef}
-                    srcDoc={buildSrcDoc(email.body, sender.email)}
+                    srcDoc={buildSrcDoc(email.body, sender.email, isDarkTheme)}
                     title="Email Content"
                     style={{
                       width: '100%',
