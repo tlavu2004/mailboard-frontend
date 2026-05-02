@@ -129,6 +129,7 @@ function InboxPageContent() {
       setEmails([]);
       setTotalEmails(0);
       setSelectedEmail(null);
+      loadCountRef.current++; // V50: Prevent race condition from previous mailbox fetch
       setSelectedMailbox(mailboxParam);
     }
   }, [searchParams, selectedMailbox]);
@@ -160,6 +161,10 @@ function InboxPageContent() {
   const [isMobile, setIsMobile] = useState(false);
 
   const [inlineAlert, setInlineAlert] = useState<{ emailId: string; message: string } | null>(null);
+  
+  // V50: Track active syncs and cooldowns to prevent hammering the backend
+  const activeSyncsRef = useRef<Set<string>>(new Set());
+  const lastSyncTimeRef = useRef<Record<string, number>>({});
 
   // Show inline no-reply banner whenever an email is opened. Avoid duplicate rendering
   // by checking the current `inlineAlert` (if it's already showing for the same
@@ -552,6 +557,21 @@ function InboxPageContent() {
     }
   };
 
+  const handleCompose = () => {
+    if (isOpeningRef.current) return;
+    console.log('[InboxPage] handleCompose: creating new fresh draft');
+    isOpeningRef.current = true;
+    try {
+      flushSync(() => {
+        setReplyToEmail(null);
+        setComposeMode('compose');
+      });
+      setIsComposeVisible(true);
+    } finally {
+      setTimeout(() => { isOpeningRef.current = false; }, 50);
+    }
+  };
+
   const loadMailboxes = useCallback(async (): Promise<string | null> => {
     try {
       console.log('[InboxPage] loadMailboxes: starting...');
@@ -585,15 +605,18 @@ function InboxPageContent() {
     }
   }, [setMailboxes, setSelectedMailbox]);
 
-  const loadEmails = useCallback(async (p: number, silent: boolean = false) => {
-    if (!selectedMailbox) return;
+  const loadEmails = useCallback(async (p: number, silent: boolean = false, overrideMailbox?: string) => {
+    const targetMailbox = overrideMailbox || selectedMailbox;
+    if (!targetMailbox) return;
+    
+    console.log(`[InboxPage] loadEmails: fetching ${targetMailbox} page ${p} (silent: ${silent})`);
     const requestId = ++loadCountRef.current;
     if (!silent) {
       setEmailsLoading(true);
       setEmailsError(null);
     }
     try {
-      const data = await emailService.getEmailsByMailbox(selectedMailbox, p, pageSize, filters, sortLayers);
+      const data = await emailService.getEmailsByMailbox(targetMailbox, p, pageSize, filters, sortLayers);
       // V48: Only update if this is still the most recent request
       if (requestId === loadCountRef.current) {
         setEmails(data.emails);
@@ -657,12 +680,17 @@ function InboxPageContent() {
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   useEffect(() => {
     if (!initialLoadDone && selectedMailbox) {
-      // Mark initial load as done after first selectedMailbox is set
       setInitialLoadDone(true);
       return;
     }
     if (initialLoadDone && selectedMailbox) {
-      console.log('[InboxPage] selectedMailbox/sort/filter changed to', selectedMailbox, '- reloading emails');
+      console.log('[InboxPage] selectedMailbox/filters changed - clearing list and reloading');
+      // V50: Aggressive clearing for ALL mailbox/filter changes to prevent "ghosting"
+      setEmails([]);
+      setTotalEmails(0);
+      setSelectedEmail(null);
+      loadCountRef.current++; // Invalidate any previous in-flight requests
+      
       loadEmails(1);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -706,23 +734,35 @@ function InboxPageContent() {
   };
 
   const handleMailboxSelect = (mailboxId: string) => {
+    console.log(`[InboxPage] handleMailboxSelect: switching to ${mailboxId}`);
     // V43: Clear list immediately to prevent "ghost" mails from previous mailbox
     setEmails([]);
     setTotalEmails(0);
     setSelectedEmail(null);
+    loadCountRef.current++; // V50: Increment request ID immediately to invalidate any in-flight requests
 
     setSelectedMailbox(mailboxId);
     setCurrentPage(1); // Reset to page 1 when switching mailbox
     setShowMobileDetail(false);
+    setIsSearching(false); // V50: Exit search mode when a mailbox is explicitly selected
+    setSearchQuery(''); // Clear search query state
 
     // Persist mailbox to URL
     const params = new URLSearchParams(searchParams.toString());
     params.set('mailbox', mailboxId);
     router.push(`${pathname}?${params.toString()}`);
 
-    // V10.50: Automatically trigger sync ONLY for INBOX when selected to avoid heavy background tasks for Drafts/Sent
+    // V10.50: Automatically trigger sync ONLY for INBOX when selected
     if (mailboxId.toUpperCase() === 'INBOX') {
-      handleSync(mailboxId);
+      const now = Date.now();
+      const lastSync = lastSyncTimeRef.current['INBOX'] || 0;
+      // Only auto-sync if it's been more than 30 seconds since last sync for this folder
+      if (now - lastSync > 30000) {
+        console.log('[InboxPage] handleMailboxSelect: triggering auto-sync for INBOX (cooldown passed)');
+        handleSync(mailboxId);
+      } else {
+        console.log('[InboxPage] handleMailboxSelect: skipping auto-sync for INBOX (cooldown active)');
+      }
     }
   };
 
@@ -818,6 +858,9 @@ function InboxPageContent() {
     setCurrentPage(1);
     setSelectedEmail(null);
     setShowMobileDetail(false);
+    setEmails([]);
+    setTotalEmails(0);
+    loadCountRef.current++;
     // Explicitly reload with defaults
     loadEmails(1, true);
     message.info('Filters reset to default');
@@ -915,6 +958,15 @@ function InboxPageContent() {
   };
 
   const handleSync = async (mailboxId?: string) => {
+    const normalized = (mailboxId || selectedMailbox || 'INBOX').toUpperCase();
+    
+    // V50: Prevent concurrent syncs for the same folder
+    if (activeSyncsRef.current.has(normalized)) {
+      console.log(`[InboxPage] handleSync: sync already in progress for ${normalized}, skipping`);
+      return;
+    }
+
+    activeSyncsRef.current.add(normalized);
     setSyncLoading(true);
     try {
       const folderMap: Record<string, string> = {
@@ -927,7 +979,6 @@ function InboxPageContent() {
         IMPORTANT: '[Gmail]/Important',
         STARRED: '[Gmail]/Starred',
       };
-      const normalized = (mailboxId || selectedMailbox || 'INBOX').toUpperCase();
       const syncFolder = folderMap[normalized] || mailboxId || selectedMailbox || 'INBOX';
 
       // Close detail view during sync to show fresh list
@@ -935,16 +986,19 @@ function InboxPageContent() {
       setShowMobileDetail(false);
 
       await emailService.syncEmails(undefined, syncFolder);
-      message.success('Sync completed. Refreshing emails...');
-      // Refresh both list and mailbox counts
+      lastSyncTimeRef.current[normalized] = Date.now();
+      message.success(`Sync completed for ${normalized}`);
+      
+      // V50: Use the SPECIFIC mailboxId we were syncing to refresh
       await Promise.all([
-        loadEmails(1),
+        loadEmails(1, true, normalized),
         loadMailboxes()
       ]);
     } catch (error) {
       console.error('Sync failed:', error);
       message.error('Failed to sync emails from Gmail');
     } finally {
+      activeSyncsRef.current.delete(normalized);
       setSyncLoading(false);
     }
   };
@@ -1815,7 +1869,7 @@ function InboxPageContent() {
                       icon={<EditOutlined />}
                       block
                       size="large"
-                      onClick={() => setIsComposeVisible(true)}
+                      onClick={handleCompose}
                       style={{ borderRadius: '12px', height: '48px', boxShadow: '0 4px 12px rgba(102, 126, 234, 0.25)' }}
                     >
                       Compose
@@ -2309,7 +2363,7 @@ function InboxPageContent() {
                     block
                     size="large"
                     onClick={() => {
-                      setIsComposeVisible(true);
+                      handleCompose();
                       setMobileDrawerOpen(false);
                     }}
                     style={{ borderRadius: '12px', height: '48px' }}
@@ -2526,7 +2580,7 @@ function InboxPageContent() {
                 icon={<EditOutlined style={{ fontSize: '24px' }} />}
                 size="large"
                 className="mobile-fab-compose"
-                onClick={() => setIsComposeVisible(true)}
+                onClick={handleCompose}
               />
             </>
           )}
