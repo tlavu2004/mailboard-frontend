@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { flushSync } from 'react-dom';
-import { Layout, Menu, List, Card, Button, Typography, Space, Avatar, Spin, message, Empty, Modal, Pagination, Dropdown, Drawer, notification, Alert, Tooltip } from 'antd';
+import { Layout, Menu, List, Card, Button, Typography, Space, Avatar, Spin, message, Empty, Modal, Pagination, Dropdown, Drawer, notification, Alert, Tooltip, Input, Checkbox, Badge } from 'antd';
 import EmailDetail from '@/app/components/EmailDetail';
 import InlineAlertContext from '@/contexts/InlineAlertContext';
 import ComposeModal from '@/components/ComposeModal';
@@ -165,6 +165,11 @@ function InboxPageContent() {
   // V50: Track active syncs and cooldowns to prevent hammering the backend
   const activeSyncsRef = useRef<Set<string>>(new Set());
   const lastSyncTimeRef = useRef<Record<string, number>>({});
+  
+  // V50: Multi-selection state
+  const [selectedEmailIds, setSelectedEmailIds] = useState<Set<string>>(new Set());
+  const [isAllSelectedInMailbox, setIsAllSelectedInMailbox] = useState(false);
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
 
   // Show inline no-reply banner whenever an email is opened. Avoid duplicate rendering
   // by checking the current `inlineAlert` (if it's already showing for the same
@@ -693,6 +698,9 @@ function InboxPageContent() {
       
       loadEmails(1);
     }
+    // V50: Clear selection when mailbox/filters change
+    setSelectedEmailIds(new Set());
+    setIsAllSelectedInMailbox(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMailbox, filters, sortLayers, pageSize]);
 
@@ -1476,6 +1484,211 @@ function InboxPageContent() {
       });
   };
 
+  const handleToggleSelect = (e: React.MouseEvent | React.ChangeEvent, emailId: string) => {
+    if (e.stopPropagation) e.stopPropagation();
+    setSelectedEmailIds(prev => {
+      const next = new Set(prev);
+      if (next.has(emailId)) next.delete(emailId);
+      else next.add(emailId);
+      // V50: If we manually deselect one, we are no longer selecting "all in mailbox"
+      if (next.size < emails.length) setIsAllSelectedInMailbox(false);
+      return next;
+    });
+  };
+
+  const handleSelectAll = (e: any) => {
+    if (e.target.checked) {
+      const allIds = emails.map(em => String(em.id));
+      setSelectedEmailIds(new Set(allIds));
+    } else {
+      setSelectedEmailIds(new Set());
+      setIsAllSelectedInMailbox(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedEmailIds.size === 0) return;
+    
+    const ids = isAllSelectedInMailbox ? null : Array.from(selectedEmailIds);
+    const bulkFilters = isAllSelectedInMailbox ? { 
+      mailboxId: selectedMailbox, 
+      unread: filters.unread, 
+      hasAttachments: filters.hasAttachment 
+    } : {};
+    
+    const isTrash = (selectedMailbox || '').toUpperCase() === 'TRASH';
+    
+    const performBulkDelete = async () => {
+      setIsBulkProcessing(true);
+      const hide = message.loading(isTrash ? 'Deleting permanently...' : 'Moving to Trash...', 0);
+      try {
+        if (isTrash) {
+          await emailService.bulkDeleteEmails(ids, bulkFilters);
+        } else {
+          await emailService.bulkModifyEmails(ids, ['TRASH'], [], bulkFilters);
+        }
+        message.success(`${isAllSelectedInMailbox ? 'All matching' : ids?.length} emails ${isTrash ? 'permanently deleted' : 'moved to Trash'}`);
+        
+        // V50: Close detail view if the currently open email was deleted
+        if (selectedEmail && (isAllSelectedInMailbox || ids?.includes(String(selectedEmail.id)))) {
+          setSelectedEmail(null);
+          setShowMobileDetail(false);
+          setReadingEmailId(null); // V50: Clear reading state to allow bolding
+        }
+
+        setSelectedEmailIds(new Set());
+        setIsAllSelectedInMailbox(false);
+        loadEmails(currentPage, true);
+        loadMailboxes();
+      } catch (err) {
+        console.error('Bulk delete failed:', err);
+        message.error('Bulk action failed');
+      } finally {
+        hide();
+        setIsBulkProcessing(false);
+      }
+    };
+
+    if (isTrash) {
+      setConfirmModal({
+        visible: true,
+        title: 'Delete Multiple Permanently?',
+        content: `Are you sure you want to permanently delete ${isAllSelectedInMailbox ? totalEmails : ids?.length} selected emails? This cannot be undone.`,
+        okText: 'Delete Permanently',
+        danger: true,
+        onConfirm: () => {
+          setConfirmModal(prev => ({ ...prev, visible: false }));
+          performBulkDelete();
+        }
+      });
+    } else {
+      performBulkDelete();
+    }
+  };
+
+  const handleBulkToggleStar = async (star: boolean) => {
+    // V50: Optimization - only process IDs that need changing
+    let idsToProcess: string[] | null = null;
+    
+    if (!isAllSelectedInMailbox) {
+      const selectedList = emails.filter(e => selectedEmailIds.has(String(e.id)));
+      idsToProcess = selectedList
+        .filter(e => e.isStarred !== star)
+        .map(e => String(e.id));
+      
+      if (idsToProcess.length === 0) {
+        message.info(star ? 'All selected emails are already starred' : 'All selected emails are already unstarred');
+        setSelectedEmailIds(new Set());
+        return;
+      }
+    } else {
+      // If full mailbox selection, we pass null to let backend handle it, 
+      // but we could technically add a "onlyStarred" or "onlyUnstarred" filter if API supported it.
+      // For now, let's stick to the current filter-based logic.
+      idsToProcess = null;
+    }
+
+    const ids = idsToProcess;
+    const bulkFilters = isAllSelectedInMailbox ? { 
+      mailboxId: selectedMailbox, 
+      unread: filters.unread, 
+      hasAttachments: filters.hasAttachment 
+    } : {};
+
+    setIsBulkProcessing(true);
+    setIsStabilizing(star ? 'Starring conversations...' : 'Unstarring conversations...');
+    const hide = message.loading(star ? 'Starring...' : 'Unstarring...', 0);
+
+    const originalEmails = [...emails];
+    const targetIds = ids || emails.map(e => String(e.id));
+
+    // V50: Optimistic update for list - only those that actually change
+    setEmails(prev => prev.map(e => {
+      if (isAllSelectedInMailbox || targetIds.includes(String(e.id))) {
+        return { ...e, isStarred: star };
+      }
+      return e;
+    }));
+
+    // V50: Optimistic update for mailbox counts
+    setMailboxes(prev => prev.map(m => {
+      if (m.id.toUpperCase() === 'STARRED') {
+        const countChange = isAllSelectedInMailbox ? totalEmails : targetIds.length;
+        return { ...m, unreadCount: star ? m.unreadCount + countChange : Math.max(0, m.unreadCount - countChange) };
+      }
+      return m;
+    }));
+
+    try {
+      if (star) await emailService.bulkModifyEmails(ids, ['STARRED'], [], bulkFilters);
+      else await emailService.bulkModifyEmails(ids, [], ['STARRED'], bulkFilters);
+      
+      message.success(`${isAllSelectedInMailbox ? 'All matching' : targetIds.length} emails updated`);
+      
+      // V50: Close detail view if the opened email was affected by bulk star
+      if (selectedEmail && (isAllSelectedInMailbox || targetIds.includes(String(selectedEmail.id)))) {
+        setSelectedEmail(null);
+        setShowMobileDetail(false);
+        setReadingEmailId(null);
+      }
+
+      setSelectedEmailIds(new Set());
+      setIsAllSelectedInMailbox(false);
+      
+      // V50: Refresh with delay for backend sync
+      setTimeout(() => {
+        Promise.all([
+          loadEmails(currentPage, true),
+          loadMailboxes()
+        ]).finally(() => {
+          setIsStabilizing(null);
+        });
+      }, 3000);
+    } catch (err) {
+      console.error('Bulk star failed:', err);
+      message.error('Bulk action failed');
+      setEmails(originalEmails);
+      setIsStabilizing(null);
+    } finally {
+      hide();
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const handleBulkMarkRead = async (read: boolean) => {
+    const ids = isAllSelectedInMailbox ? null : Array.from(selectedEmailIds);
+    const bulkFilters = isAllSelectedInMailbox ? { 
+      mailboxId: selectedMailbox, 
+      unread: filters.unread, 
+      hasAttachments: filters.hasAttachment 
+    } : {};
+
+    setIsBulkProcessing(true);
+    const hide = message.loading(read ? 'Marking as read...' : 'Marking as unread...', 0);
+    try {
+      if (read) await emailService.bulkModifyEmails(ids, [], ['UNREAD'], bulkFilters);
+      else await emailService.bulkModifyEmails(ids, ['UNREAD'], [], bulkFilters);
+      message.success(`${isAllSelectedInMailbox ? 'All matching' : ids?.length} emails updated`);
+      
+      // V50: Close detail view if the opened email was affected by bulk read/unread
+      if (selectedEmail && (isAllSelectedInMailbox || ids?.includes(String(selectedEmail.id)))) {
+        setSelectedEmail(null);
+        setShowMobileDetail(false);
+        setReadingEmailId(null);
+      }
+
+      setSelectedEmailIds(new Set());
+      setIsAllSelectedInMailbox(false);
+      loadEmails(currentPage, true);
+      loadMailboxes();
+    } catch (err) {
+      message.error('Bulk action failed');
+    } finally {
+      hide();
+      setIsBulkProcessing(false);
+    }
+  };
+
   const handleRestoreToInbox = async (email: Email) => {
     if (isRestoring) return;
     setIsRestoring(email.id);
@@ -1982,11 +2195,77 @@ function InboxPageContent() {
                     >
                       {viewMode === 'list' ? (
                         <>
-                          <div className="p-2 border-b border-gray-100" style={{ paddingLeft: '24px' }}>
-                            <Title level={5} style={{ margin: 0 }}>
-                              {selectedMailboxTitle}
-                            </Title>
+                          <div className="p-2 border-b border-gray-100 flex items-center justify-between" style={{ paddingLeft: '24px', minHeight: '48px' }}>
+                            <div className="flex items-center gap-3">
+                              <Checkbox 
+                                indeterminate={selectedEmailIds.size > 0 && selectedEmailIds.size < emails.length}
+                                checked={emails.length > 0 && selectedEmailIds.size === emails.length}
+                                onChange={handleSelectAll}
+                                style={{ marginLeft: '4px' }}
+                              />
+                              {selectedEmailIds.size > 0 ? (
+                                <div className="flex items-center gap-2 animate-in fade-in duration-200">
+                                  <Text strong style={{ marginRight: '12px', fontSize: '13px' }}>{selectedEmailIds.size} selected</Text>
+                                  <Tooltip title="Mark as Read">
+                                    <Button size="small" type="text" icon={<MailOutlined />} onClick={() => handleBulkMarkRead(true)} disabled={isBulkProcessing} />
+                                  </Tooltip>
+                                  <Tooltip title="Mark as Unread">
+                                    <Button size="small" type="text" icon={<MailFilled />} onClick={() => handleBulkMarkRead(false)} disabled={isBulkProcessing} />
+                                  </Tooltip>
+                                  {(() => {
+                                    const allStarred = Array.from(selectedEmailIds).every(id => emails.find(e => String(e.id) === id)?.isStarred);
+                                    return (
+                                      <Tooltip title={allStarred ? "Unstar Selected" : "Star Selected"}>
+                                        <Button 
+                                          size="small" 
+                                          type="text" 
+                                          icon={allStarred ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined />} 
+                                          onClick={() => handleBulkToggleStar(!allStarred)} 
+                                          disabled={isBulkProcessing} 
+                                        />
+                                      </Tooltip>
+                                    );
+                                  })()}
+                                  <Tooltip title="Delete Selected">
+                                    <Button size="small" type="text" icon={<DeleteOutlined style={{ color: '#ff4d4f' }} />} onClick={handleBulkDelete} disabled={isBulkProcessing} />
+                                  </Tooltip>
+                                </div>
+                              ) : (
+                                <Title level={5} style={{ margin: 0 }}>
+                                  {selectedMailboxTitle}
+                                </Title>
+                              )}
+                            </div>
+                            {selectedEmailIds.size === 0 && (
+                               <div className="flex items-center gap-2">
+                                  <Text type="secondary" style={{ fontSize: '12px' }}>{totalEmails} total</Text>
+                               </div>
+                            )}
                           </div>
+                          
+                          {/* V50: Select All Banner */}
+                          {selectedEmailIds.size === emails.length && totalEmails > emails.length && (
+                            <div className="bg-blue-50 border-b border-blue-100 p-2 text-center animate-in slide-in-from-top duration-300">
+                              <Text style={{ fontSize: '13px' }}>
+                                {isAllSelectedInMailbox ? (
+                                  <>
+                                    All <strong>{totalEmails}</strong> conversations in {selectedMailboxTitle} are selected. 
+                                    <Button type="link" size="small" onClick={() => {
+                                      setSelectedEmailIds(new Set());
+                                      setIsAllSelectedInMailbox(false);
+                                    }}>Clear selection</Button>
+                                  </>
+                                ) : (
+                                  <>
+                                    All <strong>{emails.length}</strong> conversations on this page are selected. 
+                                    <Button type="link" size="small" onClick={() => setIsAllSelectedInMailbox(true)}>
+                                      Select all <strong>{totalEmails}</strong> conversations in {selectedMailboxTitle}
+                                    </Button>
+                                  </>
+                                )}
+                              </Text>
+                            </div>
+                          )}
                           <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-2 inbox-list-scroll" style={{ paddingLeft: '24px', paddingRight: '12px' }}>
                             {emailsLoading ? (
                               <div className="p-12 text-center">
@@ -2072,6 +2351,14 @@ function InboxPageContent() {
                                         }}
                                       >
                                         <div className="flex items-start gap-3">
+                                          {/* Selection Checkbox */}
+                                          <div onClick={(e) => e.stopPropagation()} style={{ paddingTop: '8px' }}>
+                                            <Checkbox 
+                                              checked={selectedEmailIds.has(emailIdStr)}
+                                              onChange={(e: any) => handleToggleSelect(e, emailIdStr)}
+                                            />
+                                          </div>
+
                                           {/* Left: Avatar */}
                                           <Avatar
                                             className="flex-shrink-0"

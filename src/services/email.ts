@@ -332,4 +332,26 @@ export const emailService = {
     const response = await apiClient.get<any>('emails/contacts');
     return response.data;
   },
+
+  // V50: Bulk operations
+  bulkModifyEmails: async (ids: string[] | null, addLabels: string[], removeLabels: string[], filters: any = {}): Promise<void> => {
+    if (USE_MOCK_API) return;
+    await apiClient.post('emails/bulk-modify', {
+      ids,
+      mailboxId: filters.mailboxId,
+      unread: filters.unread,
+      hasAttachments: filters.hasAttachments,
+      actions: { addLabels, removeLabels }
+    });
+  },
+
+  bulkDeleteEmails: async (ids: string[] | null, filters: any = {}): Promise<void> => {
+    if (USE_MOCK_API) return;
+    await apiClient.post('emails/bulk-delete', {
+      ids,
+      mailboxId: filters.mailboxId,
+      unread: filters.unread,
+      hasAttachments: filters.hasAttachments
+    });
+  },
 };
