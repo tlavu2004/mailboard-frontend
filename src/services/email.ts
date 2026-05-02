@@ -320,4 +320,16 @@ export const emailService = {
     }
     await apiClient.delete('mailboxes/TRASH/empty');
   },
+
+  // Get all known contacts for autocomplete
+  getContacts: async (): Promise<{ name: string, email: string }[]> => {
+    if (USE_MOCK_API) {
+      return [
+        { name: 'John Doe', email: 'john@example.com' },
+        { name: 'Jane Smith', email: 'jane@example.com' }
+      ];
+    }
+    const response = await apiClient.get<any>('emails/contacts');
+    return response.data;
+  },
 };
