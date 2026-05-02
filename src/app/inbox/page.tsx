@@ -1520,17 +1520,22 @@ function InboxPageContent() {
     
     const performBulkDelete = async () => {
       setIsBulkProcessing(true);
+      setIsStabilizing(isTrash ? 'Deleting conversations permanently...' : 'Moving conversations to Trash...');
       const hide = message.loading(isTrash ? 'Deleting permanently...' : 'Moving to Trash...', 0);
+      
+      const originalEmails = [...emails];
+      const targetIds = ids || emails.map(e => String(e.id));
+
       try {
         if (isTrash) {
           await emailService.bulkDeleteEmails(ids, bulkFilters);
         } else {
           await emailService.bulkModifyEmails(ids, ['TRASH'], [], bulkFilters);
         }
-        message.success(`${isAllSelectedInMailbox ? 'All matching' : ids?.length} emails ${isTrash ? 'permanently deleted' : 'moved to Trash'}`);
+        message.success(`${isAllSelectedInMailbox ? 'All matching' : targetIds.length} emails ${isTrash ? 'permanently deleted' : 'moved to Trash'}`);
         
         // V50: Close detail view if the currently open email was deleted
-        if (selectedEmail && (isAllSelectedInMailbox || ids?.includes(String(selectedEmail.id)))) {
+        if (selectedEmail && (isAllSelectedInMailbox || targetIds.includes(String(selectedEmail.id)))) {
           setSelectedEmail(null);
           setShowMobileDetail(false);
           setReadingEmailId(null); // V50: Clear reading state to allow bolding
@@ -1538,11 +1543,21 @@ function InboxPageContent() {
 
         setSelectedEmailIds(new Set());
         setIsAllSelectedInMailbox(false);
-        loadEmails(currentPage, true);
-        loadMailboxes();
+
+        // V50: Refresh with delay for backend sync
+        setTimeout(() => {
+          Promise.all([
+            loadEmails(currentPage, true),
+            loadMailboxes()
+          ]).finally(() => {
+            setIsStabilizing(null);
+          });
+        }, 3000);
       } catch (err) {
         console.error('Bulk delete failed:', err);
         message.error('Bulk action failed');
+        setEmails(originalEmails);
+        setIsStabilizing(null);
       } finally {
         hide();
         setIsBulkProcessing(false);
@@ -1664,14 +1679,28 @@ function InboxPageContent() {
     } : {};
 
     setIsBulkProcessing(true);
+    setIsStabilizing(read ? 'Marking conversations as read...' : 'Marking conversations as unread...');
     const hide = message.loading(read ? 'Marking as read...' : 'Marking as unread...', 0);
+
+    const originalEmails = [...emails];
+    const targetIds = ids || emails.map(e => String(e.id));
+
+    // V50: Optimistic update
+    setEmails(prev => prev.map(e => {
+      if (isAllSelectedInMailbox || targetIds.includes(String(e.id))) {
+        return { ...e, isRead: read };
+      }
+      return e;
+    }));
+
     try {
       if (read) await emailService.bulkModifyEmails(ids, [], ['UNREAD'], bulkFilters);
       else await emailService.bulkModifyEmails(ids, ['UNREAD'], [], bulkFilters);
-      message.success(`${isAllSelectedInMailbox ? 'All matching' : ids?.length} emails updated`);
       
-      // V50: Close detail view if the opened email was affected by bulk read/unread
-      if (selectedEmail && (isAllSelectedInMailbox || ids?.includes(String(selectedEmail.id)))) {
+      message.success(`${isAllSelectedInMailbox ? 'All matching' : targetIds.length} emails updated`);
+      
+      // V50: Close detail view if affected
+      if (selectedEmail && (isAllSelectedInMailbox || targetIds.includes(String(selectedEmail.id)))) {
         setSelectedEmail(null);
         setShowMobileDetail(false);
         setReadingEmailId(null);
@@ -1679,10 +1708,21 @@ function InboxPageContent() {
 
       setSelectedEmailIds(new Set());
       setIsAllSelectedInMailbox(false);
-      loadEmails(currentPage, true);
-      loadMailboxes();
+
+      // V50: Refresh with delay for backend sync
+      setTimeout(() => {
+        Promise.all([
+          loadEmails(currentPage, true),
+          loadMailboxes()
+        ]).finally(() => {
+          setIsStabilizing(null);
+        });
+      }, 3000);
     } catch (err) {
+      console.error('Bulk read/unread failed:', err);
       message.error('Bulk action failed');
+      setEmails(originalEmails);
+      setIsStabilizing(null);
     } finally {
       hide();
       setIsBulkProcessing(false);
