@@ -71,6 +71,7 @@ export default function KanbanBoard({
   const boardRef = useRef<HTMLDivElement | null>(null);
   const dragPreviewRef = useRef<KanbanCardType | null>(null);
   const [boardKey, setBoardKey] = useState(0);
+  const fetchCountRef = useRef(0);
 
   const scrollToColumn = useCallback((colKey: string) => {
     const container = boardRef.current;
@@ -124,13 +125,21 @@ export default function KanbanBoard({
     })
   );
 
-  const fetchBoard = useCallback(async () => {
-    setLoading(true);
+  const fetchBoard = useCallback(async (silent = false) => {
+    const requestId = ++fetchCountRef.current;
+    if (!silent) {
+      setLoading(true);
+      // V50: Clear columns and meta immediately for non-silent loads to show skeletons
+      setColumns({});
+      setMeta([]);
+    }
     try {
       const [boardData, columnsData] = await Promise.all([
         emailService.getKanban(mailboxId, sortLayers),
         kanbanService.getColumns(),
       ]);
+
+      if (requestId !== fetchCountRef.current) return;
 
       // Map KanbanColumn[] to ColMeta[]
       // Sort by order to ensure correct display order
@@ -162,10 +171,14 @@ export default function KanbanBoard({
       setMeta(incomingMeta);
       setError('');
     } catch (err) {
-      setError('Failed to load Kanban board');
+      if (requestId === fetchCountRef.current) {
+        setError('Failed to load Kanban board');
+      }
       console.error(err);
     } finally {
-      setLoading(false);
+      if (requestId === fetchCountRef.current) {
+        setLoading(false);
+      }
     }
   }, [filters, sortLayers, mailboxId]);
 
@@ -192,7 +205,7 @@ export default function KanbanBoard({
         message.info('New emails received! Updating Kanban...');
       }
       try {
-        await fetchBoard();
+        await fetchBoard(true);
 
         // If backend provided specific email IDs, highlight those cards (no navigation)
         if (Array.isArray(msg.emailIds) && msg.emailIds.length > 0) {
@@ -231,7 +244,7 @@ export default function KanbanBoard({
     try {
       await emailService.syncEmails();
       message.success('Sync completed. Refreshing board...');
-      await fetchBoard();
+      await fetchBoard(true);
     } catch (err) {
       console.error('Sync failed:', err);
       message.error('Failed to sync emails from Gmail');
@@ -345,7 +358,7 @@ export default function KanbanBoard({
     refreshDebounceRef.current = window.setTimeout(() => {
       console.log('[KanbanBoard] scheduleFetchBoard: executing fetchBoard');
 
-      fetchBoard();
+      fetchBoard(true);
       refreshDebounceRef.current = null;
     }, 700);
   }, [fetchBoard]);
@@ -366,7 +379,7 @@ export default function KanbanBoard({
       // Force remount of the DnD context to clear any internal drag overlay state
       setBoardKey(k => k + 1);
       // Allow remount to settle then fetch board to reconcile state
-      window.setTimeout(() => fetchBoard(), 60);
+      window.setTimeout(() => fetchBoard(true), 60);
       return;
     }
 
@@ -408,7 +421,7 @@ export default function KanbanBoard({
         console.warn('[KanbanBoard] Could not determine Snoozed column key; aborting optimistic placement and refreshing from server. Meta keys:', meta.map(m => m.key));
 
         // Immediately fetch board to reconcile
-        fetchBoard();
+        fetchBoard(true);
         return prev;
       }
 
@@ -444,7 +457,7 @@ export default function KanbanBoard({
     });
 
     // Refresh immediately to reconcile with server state
-    fetchBoard();
+    fetchBoard(true);
   }, [meta, scheduleFetchBoard, fetchBoard, activeId]);
 
   // Listen for external snooze events (e.g. snoozed from EmailDetail modal)
@@ -543,7 +556,7 @@ export default function KanbanBoard({
     } catch (err) {
       console.error("Move failed", err);
       message.error("Failed to save new position");
-      fetchBoard();
+      fetchBoard(true);
     }
   };
 
@@ -616,7 +629,7 @@ export default function KanbanBoard({
         <div className="flex justify-between items-center">
           <span>{error}</span>
           <button
-            onClick={fetchBoard}
+            onClick={() => fetchBoard()}
             className="px-3 py-1 bg-white border border-red-300 rounded hover:bg-red-50 text-sm"
           >
             Retry
@@ -647,7 +660,7 @@ export default function KanbanBoard({
                 label={col.label}
                 color={col.color}
                 cards={processedColumns[col.key] || []}
-                onRefresh={fetchBoard}
+                onRefresh={() => fetchBoard()}
                 onSnooze={handleCardSnooze}
                 onCardClick={onCardClick}
               />
