@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Modal, Form, Input, Button, message, Upload, Space, Tag, Typography, Image, Alert } from 'antd';
+import { Modal, Form, Input, Button, message, Upload, Space, Tag, Typography, Image, Alert, AutoComplete } from 'antd';
 import {
   PaperClipOutlined,
   SendOutlined,
@@ -66,7 +66,95 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
   const [showQuotedContent, setShowQuotedContent] = useState(false);
   const [quotedContent, setQuotedContent] = useState('');
   const [gmailDraftId, setGmailDraftId] = useState<string | undefined>();
+  const [contacts, setContacts] = useState<{ name: string, email: string }[]>([]);
+  const [filteredOptions, setFilteredOptions] = useState<{ value: string, label: React.ReactNode }[]>([]);
+  
+  useEffect(() => {
+    const fetchContacts = async () => {
+      try {
+        const data = await emailService.getContacts();
+        // V50: Deduplicate by email address (case-insensitive) to prevent double suggestions
+        const uniqueMap = new Map<string, {name: string, email: string}>();
+        if (data && Array.isArray(data)) {
+          data.forEach(item => {
+            const emailKey = item.email.toLowerCase();
+            if (!uniqueMap.has(emailKey) || (!uniqueMap.get(emailKey)?.name && item.name)) {
+              uniqueMap.set(emailKey, item);
+            }
+          });
+        }
+        setContacts(Array.from(uniqueMap.values()));
+      } catch (error) {
+        console.error('Failed to fetch contacts:', error);
+      }
+    };
+    if (visible) {
+      fetchContacts();
+    }
+  }, [visible]);
+
+  const handleSearch = (value: string) => {
+    if (!value) {
+      setFilteredOptions([]);
+      return;
+    }
+    const lowerValue = value.toLowerCase();
+    
+    // V50: Filter out emails that are already selected in any field
+    const selectedSet = new Set([
+      ...toEmails.map(e => e.toLowerCase()),
+      ...ccEmails.map(e => e.toLowerCase()),
+      ...bccEmails.map(e => e.toLowerCase())
+    ]);
+
+    const filtered = contacts
+      .filter(c => {
+        const email = c.email.toLowerCase();
+        if (selectedSet.has(email)) return false;
+        return (c.name || '').toLowerCase().includes(lowerValue) || email.includes(lowerValue);
+      })
+      .slice(0, 5)
+      .map(c => {
+        const localPart = c.email.split('@')[0];
+        const hasDistinctName = c.name && c.name.toLowerCase() !== localPart.toLowerCase() && c.name.toLowerCase() !== c.email.toLowerCase();
+        
+        return {
+          value: c.email,
+          label: (
+            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+              {hasDistinctName ? (
+                <>
+                  <span style={{ fontWeight: 500 }}>{c.name}</span>
+                  <span style={{ color: '#8c8c8c', fontSize: '12px', marginLeft: '12px' }}>{c.email}</span>
+                </>
+              ) : (
+                <span style={{ fontWeight: 500 }}>{c.email}</span>
+              )}
+            </div>
+          )
+        };
+      });
+    setFilteredOptions(filtered);
+  };
   const gmailDraftIdRef = useRef<string | undefined>(undefined);
+  
+  // V50: Use Refs to track latest input values to avoid stale closures in setTimeout/onBlur
+  const inputValueRef = useRef('');
+  const ccInputValueRef = useRef('');
+  const bccInputValueRef = useRef('');
+
+  const handleInputChange = (val: string, type: 'to' | 'cc' | 'bcc') => {
+    if (type === 'to') {
+      setInputValue(val);
+      inputValueRef.current = val;
+    } else if (type === 'cc') {
+      setCcInputValue(val);
+      ccInputValueRef.current = val;
+    } else {
+      setBccInputValue(val);
+      bccInputValueRef.current = val;
+    }
+  };
   
   useEffect(() => {
     gmailDraftIdRef.current = gmailDraftId;
@@ -385,21 +473,29 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
       return;
     }
 
+    const lowerEmail = trimmedEmail.toLowerCase();
+
     if (type === 'to') {
-      if (!toEmails.includes(trimmedEmail)) {
-        setToEmails([...toEmails, trimmedEmail]);
-      }
+      setToEmails(prev => {
+        if (prev.some(e => e.toLowerCase() === lowerEmail)) return prev;
+        return [...prev, trimmedEmail];
+      });
       setInputValue('');
+      inputValueRef.current = '';
     } else if (type === 'cc') {
-      if (!ccEmails.includes(trimmedEmail)) {
-        setCcEmails([...ccEmails, trimmedEmail]);
-      }
+      setCcEmails(prev => {
+        if (prev.some(e => e.toLowerCase() === lowerEmail)) return prev;
+        return [...prev, trimmedEmail];
+      });
       setCcInputValue('');
+      ccInputValueRef.current = '';
     } else if (type === 'bcc') {
-      if (!bccEmails.includes(trimmedEmail)) {
-        setBccEmails([...bccEmails, trimmedEmail]);
-      }
+      setBccEmails(prev => {
+        if (prev.some(e => e.toLowerCase() === lowerEmail)) return prev;
+        return [...prev, trimmedEmail];
+      });
       setBccInputValue('');
+      bccInputValueRef.current = '';
     }
   };
 
@@ -624,20 +720,40 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
                 {email}
               </Tag>
             ))}
-            <Input
-              ref={toInputRef}
+            <AutoComplete
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={(e) => handleKeyDown(e, 'to')}
-              onBlur={() => inputValue && handleAddEmail(inputValue, 'to')}
-              placeholder={toEmails.length === 0 ? "Recipients" : ""}
-              variant="borderless"
-              style={{
-                flex: 1,
-                minWidth: '200px',
-                padding: '4px 0'
+              options={filteredOptions}
+              onSearch={handleSearch}
+              onChange={(val) => handleInputChange(val, 'to')}
+              onSelect={(value) => {
+                handleAddEmail(value, 'to');
+                // V50: Explicitly clear everything in onSelect
+                setInputValue('');
+                inputValueRef.current = '';
+                setFilteredOptions([]);
               }}
-            />
+              style={{ flex: 1, minWidth: '200px' }}
+            >
+              <Input
+                ref={toInputRef}
+                onKeyDown={(e) => handleKeyDown(e, 'to')}
+                onBlur={() => {
+                  setTimeout(() => {
+                    const currentVal = inputValueRef.current;
+                    if (currentVal && !currentVal.includes('@')) {
+                      // Skip
+                    } else if (currentVal) {
+                      handleAddEmail(currentVal, 'to');
+                    }
+                  }, 300); 
+                }}
+                placeholder={toEmails.length === 0 ? "Recipients" : ""}
+                variant="borderless"
+                style={{
+                  padding: '4px 0'
+                }}
+              />
+            </AutoComplete>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
               <Button
                 type="link"
@@ -710,20 +826,38 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
                   {email}
                 </Tag>
               ))}
-              <Input
-                ref={ccInputRef}
+              <AutoComplete
                 value={ccInputValue}
-                onChange={(e) => setCcInputValue(e.target.value)}
-                onKeyDown={(e) => handleKeyDown(e, 'cc')}
-                onBlur={() => ccInputValue && handleAddEmail(ccInputValue, 'cc')}
-                placeholder="Cc recipients"
-                variant="borderless"
-                style={{
-                  flex: 1,
-                  minWidth: '200px',
-                  padding: '4px 0'
+                options={filteredOptions}
+                onSearch={handleSearch}
+                onChange={(val) => handleInputChange(val, 'cc')}
+                onSelect={(value) => {
+                  handleAddEmail(value, 'cc');
+                  setCcInputValue('');
+                  ccInputValueRef.current = '';
+                  setFilteredOptions([]);
                 }}
-              />
+                style={{ flex: 1, minWidth: '200px' }}
+              >
+                <Input
+                  ref={ccInputRef}
+                  onKeyDown={(e) => handleKeyDown(e, 'cc')}
+                  onBlur={() => {
+                    setTimeout(() => {
+                      const currentVal = ccInputValueRef.current;
+                      if (currentVal && !currentVal.includes('@')) {
+                      } else if (currentVal) {
+                        handleAddEmail(currentVal, 'cc');
+                      }
+                    }, 300);
+                  }}
+                  placeholder="Cc recipients"
+                  variant="borderless"
+                  style={{
+                    padding: '4px 0'
+                  }}
+                />
+              </AutoComplete>
               {removedNoReply && removedNoReply.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 8 }}>
                   {removedNoReply.map(addr => (
@@ -783,20 +917,38 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
                   {email}
                 </Tag>
               ))}
-              <Input
-                ref={bccInputRef}
+              <AutoComplete
                 value={bccInputValue}
-                onChange={(e) => setBccInputValue(e.target.value)}
-                onKeyDown={(e) => handleKeyDown(e, 'bcc')}
-                onBlur={() => bccInputValue && handleAddEmail(bccInputValue, 'bcc')}
-                placeholder="Bcc recipients"
-                variant="borderless"
-                style={{
-                  flex: 1,
-                  minWidth: '200px',
-                  padding: '4px 0'
+                options={filteredOptions}
+                onSearch={handleSearch}
+                onChange={(val) => handleInputChange(val, 'bcc')}
+                onSelect={(value) => {
+                  handleAddEmail(value, 'bcc');
+                  setBccInputValue('');
+                  bccInputValueRef.current = '';
+                  setFilteredOptions([]);
                 }}
-              />
+                style={{ flex: 1, minWidth: '200px' }}
+              >
+                <Input
+                  ref={bccInputRef}
+                  onKeyDown={(e) => handleKeyDown(e, 'bcc')}
+                  onBlur={() => {
+                    setTimeout(() => {
+                      const currentVal = bccInputValueRef.current;
+                      if (currentVal && !currentVal.includes('@')) {
+                      } else if (currentVal) {
+                        handleAddEmail(currentVal, 'bcc');
+                      }
+                    }, 300);
+                  }}
+                  placeholder="Bcc recipients"
+                  variant="borderless"
+                  style={{
+                    padding: '4px 0'
+                  }}
+                />
+              </AutoComplete>
             </div>
           </div>
         )}
