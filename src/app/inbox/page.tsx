@@ -32,6 +32,7 @@ import {
   CloudSyncOutlined,
   CloudOutlined,
   LinkOutlined,
+  RollbackOutlined,
 } from '@ant-design/icons';
 import KanbanBoard from '@/app/components/Kanban/KanbanBoard';
 import SearchResults from '@/app/components/SearchResults';
@@ -1793,6 +1794,65 @@ function InboxPageContent() {
       });
   };
 
+  const handleBulkRestore = async () => {
+    if (selectedEmailIds.size === 0 && !isAllSelectedInMailbox) return;
+
+    setIsBulkProcessing(true);
+    setIsStabilizing('Restoring conversations to original folders...');
+    const hide = message.loading('Restoring...', 0);
+
+    const originalEmails = [...emails];
+    const selectedList = emails.filter(e => selectedEmailIds.has(String(e.id)));
+    
+    try {
+      if (isAllSelectedInMailbox) {
+        // For All Selected, we use the bulk API for efficiency
+        const bulkFilters = { 
+          mailboxId: selectedMailbox, 
+          unread: filters.unread, 
+          hasAttachments: filters.hasAttachment 
+        };
+        await emailService.bulkModifyEmails(null, ['INBOX'], [(selectedMailbox || 'TRASH').toUpperCase()], bulkFilters);
+      } else {
+        // V51: Sequential processing as requested by user
+        for (const email of selectedList) {
+          const from = (email.mailboxId || selectedMailbox || 'TRASH').toUpperCase() as 'TRASH' | 'SPAM';
+          await emailService.restoreToInbox(String(email.id), from);
+        }
+      }
+
+      message.success(`${isAllSelectedInMailbox ? 'All matching' : selectedList.length} emails restored`);
+      
+      // Close detail view if the currently open email was restored
+      if (selectedEmail && (isAllSelectedInMailbox || selectedEmailIds.has(String(selectedEmail.id)))) {
+        setSelectedEmail(null);
+        setShowMobileDetail(false);
+        setReadingEmailId(null);
+      }
+
+      setSelectedEmailIds(new Set());
+      setIsAllSelectedInMailbox(false);
+
+      // V51: Refresh with delay for backend sync
+      setTimeout(() => {
+        Promise.all([
+          loadEmails(currentPage, true),
+          loadMailboxes()
+        ]).finally(() => {
+          setIsStabilizing(null);
+        });
+      }, 3000);
+    } catch (err) {
+      console.error('Bulk restore failed:', err);
+      message.error('Bulk restore failed');
+      setEmails(originalEmails);
+      setIsStabilizing(null);
+    } finally {
+      hide();
+      setIsBulkProcessing(false);
+    }
+  };
+
   const handleEmptyTrash = async () => {
     setConfirmModal({
       visible: true,
@@ -2246,6 +2306,19 @@ function InboxPageContent() {
                               {selectedEmailIds.size > 0 ? (
                                 <div className="flex items-center gap-2 animate-in fade-in duration-200">
                                   <Text strong style={{ marginRight: '12px', fontSize: '13px' }}>{selectedEmailIds.size} selected</Text>
+                                  
+                                  {((selectedMailbox || '').toUpperCase() === 'TRASH' || (selectedMailbox || '').toUpperCase() === 'SPAM') && (
+                                    <Tooltip title="Restore to Original">
+                                      <Button 
+                                        size="small" 
+                                        type="text" 
+                                        icon={<RollbackOutlined style={{ color: '#52c41a' }} />} 
+                                        onClick={handleBulkRestore} 
+                                        disabled={isBulkProcessing} 
+                                      />
+                                    </Tooltip>
+                                  )}
+
                                   <Tooltip title="Mark as Read">
                                     <Button size="small" type="text" icon={<MailOutlined />} onClick={() => handleBulkMarkRead(true)} disabled={isBulkProcessing} />
                                   </Tooltip>
