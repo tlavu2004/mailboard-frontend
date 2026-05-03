@@ -1,4 +1,4 @@
-# MailBoard - Modern Frontend Interface
+# MailBoard v1.0.0 - Modern Frontend Interface
 
 MailBoard Frontend is a state-of-the-art email management interface built with **Next.js 16**, **React 19**, **TypeScript**, and **Ant Design 5**. It provides a seamless, high-performance experience for managing emails, organizing them on a **Kanban Board**, and leveraging **AI-powered search and summarization**.
 
