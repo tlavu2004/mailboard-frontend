@@ -1119,9 +1119,15 @@ function InboxPageContent() {
               const currentMailbox = (selectedMailbox || 'INBOX').toUpperCase();
 
               // Logic check: Does it belong here?
-              const statusMatch = mailboxId === currentMailbox || (currentMailbox === 'DRAFTS' && mailboxId === 'DRAFT');
+              const isStarredFolder = currentMailbox === 'STARRED';
+              const statusMatch = mailboxId === currentMailbox || 
+                                 (currentMailbox === 'DRAFTS' && mailboxId === 'DRAFT') ||
+                                 (isStarredFolder && fullEmail.isStarred);
+              
               const unreadMatch = !filters.unread || !fullEmail.isRead;
               const attachMatch = !filters.hasAttachment || fullEmail.hasAttachments;
+              
+              // V51: Special case for Starred folder - if it loses star, it should leave the list
               const shouldBeInList = statusMatch && unreadMatch && attachMatch;
 
               if (mailboxId === 'INBOX' && msg.type === 'NEW_EMAILS') {
@@ -1129,11 +1135,18 @@ function InboxPageContent() {
               }
 
               setEmails(prev => {
-                const exists = prev.some(e => String(e.id) === String(fullEmail.id));
+                // V51: Robust exists check for both DB ID and Gmail Draft ID
+                const exists = prev.some(e => 
+                  String(e.id) === String(fullEmail.id) || 
+                  (e.gmailDraftId && fullEmail.gmailDraftId && e.gmailDraftId === fullEmail.gmailDraftId)
+                );
 
                 if (shouldBeInList) {
                   if (exists) {
-                    return prev.map(e => String(e.id) === String(fullEmail.id) ? fullEmail : e);
+                    return prev.map(e => 
+                      (String(e.id) === String(fullEmail.id) || (e.gmailDraftId && fullEmail.gmailDraftId && e.gmailDraftId === fullEmail.gmailDraftId)) 
+                      ? fullEmail : e
+                    );
                   }
                   if (isSearching) return prev;
 
@@ -1165,7 +1178,10 @@ function InboxPageContent() {
                 } else {
                   // If it shouldn't be here but exists, REMOVE it (important for moved/deleted emails)
                   if (exists) {
-                    return prev.filter(e => String(e.id) !== String(fullEmail.id));
+                    return prev.filter(e => 
+                      String(e.id) !== String(fullEmail.id) && 
+                      (!e.gmailDraftId || e.gmailDraftId !== fullEmail.gmailDraftId)
+                    );
                   }
                   return prev;
                 }
