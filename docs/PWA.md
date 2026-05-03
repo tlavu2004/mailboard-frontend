@@ -2,7 +2,7 @@
 
 ## Tổng quan
 
-AI EmailBox đã được cấu hình như một Progressive Web App (PWA) với khả năng hoạt động offline đầy đủ. Điều này cho phép người dùng:
+MailBoard đã được cấu hình như một Progressive Web App (PWA) với khả năng hoạt động offline đầy đủ. Điều này cho phép người dùng:
 
 - ✅ Cài đặt ứng dụng trên thiết bị
 - ✅ Xem email đã tải trước khi offline
@@ -46,8 +46,8 @@ Icons được tạo trong `public/icons/` với các kích thước:
 
 **Để tạo icons:**
 ```powershell
-cd AiEmailbox-FE
-.\scripts\generate-icons.ps1
+cd mailboard-frontend
+./scripts/generate-icons.ps1
 ```
 
 ### 4. Components

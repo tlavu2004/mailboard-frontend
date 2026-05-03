@@ -15,8 +15,13 @@ export interface Attachment {
   id: string;
   filename: string;
   size: number;
-  mimeType: string;
+  mimeType?: string;
+  contentType?: string;
   url: string;
+  serverAttachmentId?: string;
+  contentId?: string;
+  inline?: boolean;
+  externalUrl?: string;
 }
 
 export interface Email {
@@ -24,10 +29,12 @@ export interface Email {
   messageId?: string;
   threadId?: string;
   gmailMessageId?: string;
+  gmailDraftId?: string;
   gmailLink?: string;
   accountEmail?: string;
   mailboxId: string;
   from: EmailAddress;
+  sender?: string;
   to: EmailAddress[];
   cc?: EmailAddress[];
   bcc?: EmailAddress[];
@@ -37,11 +44,17 @@ export interface Email {
   isRead: boolean;
   isStarred: boolean;
   hasAttachments: boolean;
+  hasCloudLinks: boolean;
+  hasPhysicalAttachments: boolean;
   attachments?: Attachment[];
+  fromName?: string;
+  isFromMe?: boolean;
   receivedAt: string;
   createdAt: string;
   summary?: string;
   summarySource?: string;
+  deletedAt?: string;
+  previousStatus?: string;
 }
 
 export interface ApiResponse<T> {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { RobotOutlined, ClockCircleOutlined, PaperClipOutlined, LoadingOutlined } from '@ant-design/icons';
-import { Popover } from 'antd';
+import { RobotOutlined, ClockCircleOutlined, PaperClipOutlined, LoadingOutlined, CloudOutlined, LinkOutlined } from '@ant-design/icons';
+import { Popover, message, Tooltip } from 'antd';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import dayjs from 'dayjs';
@@ -9,7 +9,9 @@ import { KanbanCardType, kanbanService } from '@/services/kanbanService';
 interface KanbanCardProps {
   card: KanbanCardType;
   onRefresh: () => void;
+  onSnooze: (cardId: string, until: string) => void;
   onClick: (card: KanbanCardType) => void;
+  isSnoozed?: boolean;
 }
 
 import SnoozePopover from '../SnoozePopover';
@@ -19,7 +21,7 @@ import SnoozePopover from '../SnoozePopover';
 // Export memoized component
 export default React.memo(KanbanCard);
 
-function KanbanCard({ card, onRefresh, onClick }: KanbanCardProps) {
+function KanbanCard({ card, onRefresh, onSnooze, onClick, isSnoozed }: KanbanCardProps) {
   // ... implementation remains the same
   const {
     attributes,
@@ -28,7 +30,7 @@ function KanbanCard({ card, onRefresh, onClick }: KanbanCardProps) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: card.id });
+  } = useSortable({ id: card.id, data: { type: 'card' } });
 
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [summary, setSummary] = useState(card.summary);
@@ -55,10 +57,16 @@ function KanbanCard({ card, onRefresh, onClick }: KanbanCardProps) {
 
   const handleSummarize = async (e: React.MouseEvent) => {
     e.stopPropagation();
-
     // If currently showing summary, switch to original view
     if (summary && !showOriginal) {
       setShowOriginal(true);
+      return;
+    }
+
+    // If the card already has a Gemini summary, avoid regenerating to save resources
+    if (card.summarySource === 'GEMINI' && summary) {
+      setShowOriginal(false);
+      message.info('Already summarized by Gemini');
       return;
     }
 
@@ -79,11 +87,14 @@ function KanbanCard({ card, onRefresh, onClick }: KanbanCardProps) {
 
   const handleSnooze = async (until: string) => {
     try {
+      console.log('[KanbanCard] snooze start', { id: card.id, until });
       await kanbanService.snoozeCard(card.id, until);
       setShowSnooze(false);
-      onRefresh();
+      // Trigger instant UI feedback
+      console.log('[KanbanCard] snooze success, calling onSnooze', { id: card.id, until });
+      onSnooze(card.id, until);
     } catch (err) {
-      console.error(err);
+      console.error('[KanbanCard] snooze error', err);
     }
   };
 
@@ -106,12 +117,20 @@ function KanbanCard({ card, onRefresh, onClick }: KanbanCardProps) {
   return (
     <div
       ref={setNodeRef}
+      data-card-id={card.id}
       style={style}
+      {...attributes}
+      {...listeners}
+      data-dnd-type="card"
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation(); // Prevent right-click from triggering column drag
+      }}
       // Use local isRead for immediate feedback
-      className={`group relative mb-3 w-full rounded-xl bg-white p-4 shadow-sm hover:shadow-md transition-all border border-gray-100 select-none border-l-[4px] ${isRead ? 'border-l-gray-300' : 'border-l-blue-500'}`}
+      className={`group relative mb-3 w-full rounded-xl bg-white p-4 shadow-sm hover:shadow-md transition-all border border-gray-100 select-none border-l-[4px] cursor-grab active:cursor-grabbing ${isRead ? 'border-l-gray-300' : 'border-l-blue-500'}`}
     >
-      {/* Header: Sender Name & Date (Drag Handle) */}
-      <div className="mb-2 flex items-center justify-between cursor-grab active:cursor-grabbing" {...attributes} {...listeners}>
+      {/* Header: Sender Name & Date */}
+      <div className="mb-2 flex items-center justify-between">
         <h4 className={`text-sm font-bold text-black leading-tight truncate pr-2 ${!isRead ? 'text-black' : 'text-gray-800'}`}>
           {senderName}
         </h4>
@@ -119,7 +138,13 @@ function KanbanCard({ card, onRefresh, onClick }: KanbanCardProps) {
       </div>
 
       {/* Content Area (Clickable) */}
-      <div className="mb-2 cursor-pointer" onClick={handleCardClick}>
+      <div
+        className="mb-2 cursor-pointer"
+        onClick={(e) => {
+          e.stopPropagation();
+          handleCardClick();
+        }}
+      >
         <h3 className={`text-base font-bold mb-1 leading-snug truncate ${!isRead ? 'text-black' : 'text-gray-800'}`}>
           {card.subject}
         </h3>
@@ -138,17 +163,25 @@ function KanbanCard({ card, onRefresh, onClick }: KanbanCardProps) {
       {/* Footer Actions */}
       <div className="flex items-center justify-between mt-3 pt-2">
         <div className="flex items-center gap-2">
-          {/* Attachment Badge */}
-          {card.hasAttachments && (
-            <div className="flex items-center gap-1 bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-medium">
-              <PaperClipOutlined /> File
-            </div>
-          )}
+          {/* Attachment Badges - V10.34 Differentiated Icons */}
+          <div className="flex items-center gap-1">
+            {card.hasPhysicalAttachments && (
+              <div className="flex items-center gap-1 bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-medium" title="Physical file attachments">
+                <PaperClipOutlined /> File
+              </div>
+            )}
+            {card.hasCloudLinks && (
+              <div className="flex items-center gap-1 bg-blue-50 text-blue-600 px-2 py-1 rounded text-xs font-medium border border-blue-100" title="Cloud storage links (Drive, etc.)">
+                <CloudOutlined /> Link
+              </div>
+            )}
+          </div>
 
           {/* Functional Buttons - Minimalist */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 -ml-1">
             <button
               onClick={handleSummarize}
+              onPointerDown={(e) => e.stopPropagation()}
               disabled={loadingSummary}
               className={`p-1.5 rounded transition-colors text-xs ${loadingSummary ? 'bg-blue-100 text-blue-600 cursor-wait' : isShowingSummary ? 'bg-green-100 text-green-700' : 'text-gray-400 hover:text-blue-600 hover:bg-blue-50'}`}
               title={loadingSummary ? 'Generating summary...' : 'Summarize'}
@@ -156,23 +189,35 @@ function KanbanCard({ card, onRefresh, onClick }: KanbanCardProps) {
               {loadingSummary ? <LoadingOutlined spin /> : <RobotOutlined />}
             </button>
             <div className="relative" onPointerDown={(e) => e.stopPropagation()}>
-              <Popover
-                content={<SnoozePopover onConfirm={handleSnooze} />}
-                trigger="click"
-                open={showSnooze}
-                onOpenChange={setShowSnooze}
-                placement="bottomRight"
-                styles={{ body: { padding: 0 } }}
-                destroyOnHidden
-              >
-                <button
-                  className="p-1.5 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                  title="Snooze"
-                  onClick={(e) => e.stopPropagation()}
+              {!isSnoozed ? (
+                <Popover
+                  content={<SnoozePopover onConfirm={handleSnooze} />}
+                  trigger="click"
+                  open={showSnooze}
+                  onOpenChange={setShowSnooze}
+                  placement="bottomRight"
+                  styles={{ body: { padding: 0 } }}
+                  destroyOnHidden
                 >
-                  <ClockCircleOutlined />
-                </button>
-              </Popover>
+                  <button
+                    className="p-1.5 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                    title="Snooze"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ClockCircleOutlined />
+                  </button>
+                </Popover>
+              ) : (
+                <Tooltip title="Already snoozed">
+                  <button
+                    className="p-1.5 rounded text-gray-300 cursor-not-allowed"
+                    title="Already snoozed"
+                    disabled
+                  >
+                    <ClockCircleOutlined />
+                  </button>
+                </Tooltip>
+              )}
             </div>
           </div>
         </div>
@@ -183,6 +228,7 @@ function KanbanCard({ card, onRefresh, onClick }: KanbanCardProps) {
             e.stopPropagation();
             handleCardClick();
           }}
+          onPointerDown={(e) => e.stopPropagation()}
           className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
         >
           View details

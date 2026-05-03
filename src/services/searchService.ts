@@ -43,10 +43,13 @@ const transformEmail = (data: any): Email => ({
   isRead: data.isRead ?? data.is_read ?? false,
   isStarred: data.isStarred ?? data.is_starred ?? false,
   hasAttachments: data.hasAttachments ?? data.has_attachments ?? false,
+  hasCloudLinks: data.hasCloudLinks ?? data.has_cloud_links ?? false,
+  hasPhysicalAttachments: data.hasPhysicalAttachments ?? data.has_physical_attachments ?? false,
   attachments: data.attachments,
   receivedAt: data.receivedAt || data.received_at || '',
   createdAt: data.createdAt || data.created_at || '',
   summary: data.summary,
+  summarySource: data.summarySource || data.summary_source,
 });
 
 export const searchService = {

@@ -97,17 +97,17 @@ export const mockEmails: MockEmail[] = [
         email: 'me@example.com',
       },
     ],
-    subject: 'Welcome to AI Email Box!',
+    subject: 'Welcome to MailBoard!',
     preview: 'Thank you for signing up. We are excited to have you on board...',
-    body: `<h2>Welcome to AI Email Box!</h2>
-<p>Thank you for signing up. We are excited to have you on board.</p>
+    body: `<h2>Welcome to MailBoard!</h2>
+  <p>Thank you for signing up. We are excited to have you on board.</p>
 <p>Here are some tips to get started:</p>
 <ul>
   <li>Organize your emails into folders</li>
   <li>Use the star feature to mark important emails</li>
   <li>Search functionality coming soon!</li>
 </ul>
-<p>Best regards,<br/>The AI Email Box Team</p>`,
+<p>Best regards,<br/>The MailBoard Team</p>`,
     isRead: false,
     isStarred: true,
     hasAttachments: false,

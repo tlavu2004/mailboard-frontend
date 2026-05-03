@@ -23,6 +23,11 @@ const SearchInput = React.forwardRef<any, SearchInputProps>(({ onSearch, default
   const [value, setValue] = useState(defaultValue);
   const [options, setOptions] = useState<SelectProps['options']>([]);
   const [loading, setLoading] = useState(false);
+
+  // V50: Sync internal state with prop changes (e.g. when cleared from outside)
+  useEffect(() => {
+    setValue(defaultValue);
+  }, [defaultValue]);
   const debouncedValue = useDebounce(value, 300);
   const isMounted = useRef(true);
   const inputRef = useRef<any>(null);

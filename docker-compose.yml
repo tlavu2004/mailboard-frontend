@@ -8,7 +8,7 @@ services:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
         - NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}
         - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
-    container_name: aiemailbox-frontend-next
+    container_name: mailboard-frontend-next
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -20,7 +20,9 @@ services:
       - NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
     networks:
-      - mailboard-network
+      mailboard-network:
+        aliases:
+          - frontend
     healthcheck:
       test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000" ]
       interval: 30s

@@ -134,7 +134,21 @@ const SearchResults: React.FC<SearchResultsProps> = ({
         {loading && safeResults.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px' }}>Loading...</div>
         ) : safeResults.length === 0 ? (
-          <Empty description="No emails found matching your query" />
+          <Empty 
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={
+              <div style={{ color: '#64748b' }}>
+                <p style={{ fontSize: '16px', fontWeight: 500, marginBottom: '4px' }}>No matches found</p>
+                <p style={{ fontSize: '14px' }}>We couldn&apos;t find any emails for &quot;{searchQuery}&quot;</p>
+                <Button 
+                  onClick={onClose} 
+                  style={{ marginTop: '16px', borderRadius: '8px' }}
+                >
+                  Clear Search
+                </Button>
+              </div>
+            }
+          />
         ) : (
           <>
             <List

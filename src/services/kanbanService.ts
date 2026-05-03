@@ -18,7 +18,10 @@ export interface KanbanCardType {
   receivedAt: string;
   isRead: boolean;
   hasAttachments: boolean;
+  hasCloudLinks: boolean;
+  hasPhysicalAttachments: boolean;
   kanbanOrder?: number;
+  summarySource?: string;
 }
 
 export interface ColMeta {
@@ -29,7 +32,7 @@ export interface ColMeta {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const transformCard = (data: any): KanbanCardType => ({
-  id: data.id,
+  id: String(data.id),
   messageId: data.message_id,
   gmailMessageId: data.gmail_message_id,
   threadId: data.thread_id,
@@ -43,7 +46,10 @@ const transformCard = (data: any): KanbanCardType => ({
   receivedAt: data.received_at,
   isRead: data.is_read,
   hasAttachments: data.has_attachments,
+  hasCloudLinks: data.has_cloud_links,
+  hasPhysicalAttachments: data.has_physical_attachments,
   kanbanOrder: data.kanban_order,
+  summarySource: data.summary_source || undefined,
 });
 
 export const DEFAULT_STATUSES = ['INBOX', 'TODO', 'IN_PROGRESS', 'DONE', 'SNOOZED'];
@@ -53,7 +59,7 @@ const transformColumn = (data: any): KanbanColumn => {
   // The backend now sends linkedStatus or id as the 'key'.
   const key = data.key || String(data.id);
   const isDefault = !!(data.isDefault || (data.key && DEFAULT_STATUSES.includes(data.key)));
-  
+
   return {
     id: String(data.id),
     userId: data.userId || '',
@@ -74,6 +80,9 @@ export const kanbanService = {
       if (opts.hasAttachments) params.hasAttachments = true;
       if (opts.sortBy) params.sortBy = opts.sortBy;
       if (opts.sortOrder) params.sortOrder = opts.sortOrder;
+      params.t = Date.now();
+    } else {
+      params.t = Date.now();
     }
 
     const response = await apiClient.get<{ columns: Record<string, any[]> }>('kanban', { params });
@@ -114,7 +123,7 @@ export const kanbanService = {
   // ========== Column Configuration ==========
 
   getColumns: async (): Promise<KanbanColumn[]> => {
-    const response = await apiClient.get<{ columns: any[] }>('kanban/columns');
+    const response = await apiClient.get<{ columns: any[] }>('kanban/columns', { params: { t: Date.now() } });
     return (response.data.columns || []).map(transformColumn);
   },
 

@@ -1,6 +1,6 @@
 {
-  "name": "AI Email Box",
-  "short_name": "AI EmailBox",
+  "name": "MailBoard",
+  "short_name": "MailBoard",
   "description": "A modern email dashboard with AI-powered features and offline support",
   "start_url": "/",
   "display": "standalone",
