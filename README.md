@@ -9,38 +9,49 @@ MailBoard Frontend is a state-of-the-art email management interface built with *
 
 ## Key Features
 
-### Unified Sidebar Layout
-A stable, premium layout architecture that eliminates component shifting during window resizing:
-- **Global Sidebar**: Logo, Compose button, Mailbox navigation, View Switcher (List/Kanban), and User Profile — all in a single, consistent vertical sidebar.
-- **Streamlined Toolbar**: Minimalist top bar with context title, search input, and sync status.
-- **Responsive Drawer**: On mobile, the sidebar collapses into a hamburger-triggered Drawer, maximizing content space.
+### Premium Unified Layout
+A stable, modern architecture designed for focus and productivity:
+- **Consistent Sidebar**: A single vertical navigation hub containing the Logo, Compose button, Mailbox navigation, View Switcher (List/Kanban), and User Profile.
+- **Adaptive Header**: Minimalist top bar that adapts to context (Search, Folder name) and displays real-time sync status.
+- **Glassmorphism & Micro-animations**: Premium visual effects including smooth transitions, hover states, and loading skeletons.
 
-### Dual View Modes
-Switch seamlessly between two distinct email views:
-- **List View**: Classic 3-column layout (Sidebar → Email List → Email Detail) with sorting, filtering, and pagination.
-- **Kanban Board**: Drag-and-drop email triage with customizable columns, color coding, Gmail label mapping, and a full Settings modal for column management.
+### Dual Interaction Modes
+Switch seamlessly between traditional and agile email management:
+- **Classic List View**: Professional 3-column layout (Sidebar → Email List → Email Detail) with advanced sorting (Date, Sender, Subject), filtering (Unread, Attachments), and pagination.
+- **Agile Kanban Board**: Full-featured drag-and-drop triage. Map Kanban columns directly to Gmail labels for bidirectional synchronization.
 
-### AI-Powered Intelligence
-- **Email Summarization**: One-click AI summaries on email detail cards, powered by Gemini with an extractive fallback.
-- **Semantic Search**: Toggle between traditional text search and AI-powered conceptual search with relevance scoring.
-- **Auto-Suggestions**: Real-time type-ahead dropdown with contact and subject suggestions as you type.
-- **Background Embeddings**: Automatic periodic embedding generation (every 2 minutes) for semantic search readiness.
+### Smart Reading & Reading Pane
+A refined email consumption experience:
+- **Vertical Split View**: Read emails side-by-side with your inbox list for maximum efficiency.
+- **AI Triage & Summaries**: Instant AI-generated summaries on the detail card to save time, with an extractive fallback.
+- **Contextual Actions**: Reply, Forward, Star, Snooze, and Delete directly from the reading pane.
+- **Enhanced HTML Rendering**: Robust iframe-based rendering with custom CSS to fix LinkedIn and other common email template display issues.
 
-### Compose & Email Actions
-Full email composition with rich functionality:
-- **Compose Modal**: To/Cc/Bcc tag inputs, subject, rich-text body, and file attachments (up to 10, with preview and size display).
-- **Reply & Forward**: Pre-filled fields with Gmail-style quoted content toggle.
-- **Mark Read/Unread, Star, Delete**: Optimistic UI updates with instant visual feedback.
-- **Download Attachments**: Blob-based file downloads via authenticated API calls.
+### Professional Bulk Operations
+Efficiently manage large volumes of mail:
+- **Selection Management**: Multi-select emails using checkboxes or "Select All" functionality.
+- **Bulk Cleanup**: Restore all emails from Trash to their original folders with one click.
+- **Real-time Sync**: Actions are instantly reflected via WebSocket notifications without page refreshes.
 
-### Real-Time & Offline
-- **WebSocket Notifications**: Live email notifications via `useEmailNotifications` hook with auto-reconnect.
-- **Multi-Tab Logout Sync**: StorageEvent-based synchronization — logout in one tab instantly logs out all other tabs.
-- **PWA & Offline Caching**: Integrated `next-pwa` for service worker registration and offline capability.
-- **Keyboard Shortcuts**: Professional hotkey navigation via `useKeyboardShortcuts` hook.
+### Intelligence & Search
+- **Dual-Mode Search**: Toggle between traditional keyword search and conceptual **Semantic Search**.
+- **Smart Suggestions**: Predictive dropdown as you type, pulling from your contacts and recently indexed subjects.
 
-### Email Statistics
-- Dedicated Statistics page with aggregated metrics (total, unread, starred, sent) visualized with interactive charts.
+---
+
+## Visual Showcase (Screenshots)
+
+![Main Dashboard](https://via.placeholder.com/1200x600?text=MailBoard+Main+Dashboard)
+*Note: [Insert screenshot_dashboard.png here]*
+
+![Kanban Board](https://via.placeholder.com/1200x600?text=Kanban+Board+View)
+*Note: [Insert screenshot_kanban.png here]*
+
+![AI Summary](https://via.placeholder.com/1200x600?text=AI+Summarization+Feature)
+*Note: [Insert screenshot_ai_summary.png here]*
+
+![Search & Suggestions](https://via.placeholder.com/1200x600?text=Search+and+Auto-suggestions)
+*Note: [Insert screenshot_search.png here]*
 
 ---
 
