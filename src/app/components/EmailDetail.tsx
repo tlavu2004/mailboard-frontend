@@ -19,6 +19,7 @@ import {
   WarningOutlined,
   MailOutlined,
   MailFilled,
+  CloseOutlined,
 } from '@ant-design/icons';
 import { Email } from '@/types/email';
 import SnoozePopover from './SnoozePopover';
@@ -844,6 +845,23 @@ const EmailDetail: React.FC<EmailDetailProps> = ({
             />
           )}
         </div>
+
+        <Tooltip title="Close (ESC)">
+          <Button
+            type="text"
+            icon={<CloseOutlined />}
+            onClick={onBack}
+            style={{ 
+              fontSize: '18px', 
+              color: '#64748b',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '8px'
+            }}
+            className="hover:bg-slate-200 rounded-full"
+          />
+        </Tooltip>
       </div>
 
       <div style={{ padding: '0 4px' }}>
