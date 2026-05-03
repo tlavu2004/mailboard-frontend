@@ -690,20 +690,28 @@ function InboxPageContent() {
       return;
     }
     if (initialLoadDone && selectedMailbox) {
-      console.log('[InboxPage] selectedMailbox/filters changed - clearing list and reloading');
-      // V50: Aggressive clearing for ALL mailbox/filter changes to prevent "ghosting"
-      setEmails([]);
-      setTotalEmails(0);
-      setSelectedEmail(null);
-      loadCountRef.current++; // Invalidate any previous in-flight requests
-      
-      loadEmails(1);
+      console.log('[InboxPage] selectedMailbox/filters/pageSize changed - resetting to page 1');
+      if (currentPage !== 1) {
+        setCurrentPage(1);
+      } else {
+        // If already at page 1, we must trigger load explicitly since currentPage won't change
+        loadEmails(1);
+      }
     }
     // V50: Clear selection when mailbox/filters change
     setSelectedEmailIds(new Set());
     setIsAllSelectedInMailbox(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMailbox, filters, sortLayers, pageSize]);
+
+  // V51: Dedicated Pagination/Loading Effect
+  useEffect(() => {
+    if (initialLoadDone && selectedMailbox) {
+      console.log(`[InboxPage] loading emails for page ${currentPage}`);
+      loadEmails(currentPage);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage]);
 
   // Auto-generate embeddings periodically (every 2 minutes)
   useEffect(() => {
@@ -750,8 +758,15 @@ function InboxPageContent() {
     setSelectedEmail(null);
     loadCountRef.current++; // V50: Increment request ID immediately to invalidate any in-flight requests
 
+    const isSameMailbox = selectedMailbox === mailboxId;
+    
     setSelectedMailbox(mailboxId);
     setCurrentPage(1); // Reset to page 1 when switching mailbox
+    
+    // V51: Reset filters and sort when explicitly selecting from sidebar/logo
+    setFilters({ unread: false, hasAttachment: false });
+    setSortLayers([{ field: 'receivedDate', order: 'desc' }]);
+    
     setShowMobileDetail(false);
     setIsSearching(false); // V50: Exit search mode when a mailbox is explicitly selected
     setSearchQuery(''); // Clear search query state
@@ -760,6 +775,12 @@ function InboxPageContent() {
     const params = new URLSearchParams(searchParams.toString());
     params.set('mailbox', mailboxId);
     router.push(`${pathname}?${params.toString()}`);
+
+    // If it's the same mailbox, the useEffect won't trigger if only non-dependency state changed (it shouldn't here but let's be safe)
+    // Or if we want to FORCE a refresh even if everything is the same:
+    if (isSameMailbox) {
+      loadEmails(1, false, mailboxId);
+    }
 
     // V10.50: Automatically trigger sync ONLY for INBOX when selected
     if (mailboxId.toUpperCase() === 'INBOX') {
